@@ -125,7 +125,11 @@ const GAME_CONFIG = {
         name: 'maimai DX (国服)',
         shortName: 'maimai 国服',
         color: '#FF8C00',
-        sources: ['https://raw.githubusercontent.com/CrazyKidCN/maimaiDX-CN-songs-database/main/maidata.json'],
+        // 使用 jsDelivr CDN 加速 GitHub 访问
+        sources: [
+            'https://cdn.jsdelivr.net/gh/CrazyKidCN/maimaiDX-CN-songs-database@main/maidata.json',
+            'https://raw.githubusercontent.com/CrazyKidCN/maimaiDX-CN-songs-database/main/maidata.json'
+        ],
         normalize: 'maimai-cn'
     },
     'chunithm': {
@@ -146,7 +150,11 @@ const GAME_CONFIG = {
         name: '太鼓の達人',
         shortName: '太鼓',
         color: '#FF6347',
-        sources: ['https://raw.githubusercontent.com/taikowiki/taiko-song-database/main/database.json'],
+        // 使用 jsDelivr CDN 加速 GitHub 访问
+        sources: [
+            'https://cdn.jsdelivr.net/gh/taikowiki/taiko-song-database@main/database.json',
+            'https://raw.githubusercontent.com/taikowiki/taiko-song-database/main/database.json'
+        ],
         normalize: 'taiko'
     }
 };
@@ -192,9 +200,22 @@ function normalizeSongs(data, type, gameId) {
             category: s.basic_info?.genre || '',
             version: s.basic_info?.from || '',
             bpm: s.basic_info?.bpm || 0,
-            coverUrl: `https://www.diving-fish.com/covers/${String(s.id).padStart(5, '0')}.png`
+            coverUrl: `https://www.diving-fish.com/covers/${String(s.id).padStart(5, '0')}.png`,
+            // 额外信息
+            type: s.type || 'SD', // SD or DX
+            isNew: s.basic_info?.is_new || false,
+            levels: s.level || [], // ["5", "7", "10", "12", "12+"]
+            ds: s.ds || [], // [5.0, 7.2, 10.2, 12.4, 13.0] 定数
+            charts: s.charts?.map((c, i) => ({
+                difficulty: ['Basic', 'Advanced', 'Expert', 'Master', 'Re:Master'][i] || `Lv${i}`,
+                level: s.level?.[i] || '?',
+                ds: s.ds?.[i] || 0,
+                charter: c.charter || '-',
+                notes: c.notes || []
+            })) || []
         }));
     } else if (type === 'diving-fish-chunithm') {
+        // CHUNITHM 封面使用 Lxns 提供的封面服务
         return data.map(s => ({
             id: String(s.id),
             title: s.title,
@@ -202,18 +223,51 @@ function normalizeSongs(data, type, gameId) {
             category: s.basic_info?.genre || '',
             version: s.basic_info?.from || '',
             bpm: s.basic_info?.bpm || 0,
-            coverUrl: `https://www.diving-fish.com/covers/chuni/${String(s.id).padStart(5, '0')}.png`
+            coverUrl: `https://lxns.net/chunithm/jacket/${s.id}.png`,
+            // 额外信息
+            levels: s.level || [],
+            ds: s.ds || [],
+            charts: s.charts?.map((c, i) => ({
+                difficulty: ['Basic', 'Advanced', 'Expert', 'Master', 'Ultima'][i] || `Lv${i}`,
+                level: s.level?.[i] || '?',
+                ds: s.ds?.[i] || 0,
+                charter: c.charter || '-',
+                combo: c.combo || 0
+            })) || []
         }));
     } else if (type === 'reiwa') {
-        return data.map(s => ({
-            id: s.meta?.id || String(Math.random()),
-            title: s.meta?.title || '',
-            artist: s.meta?.artist || '',
-            category: s.meta?.genre || '',
-            version: s.meta?.release || '',
-            bpm: 0,
-            coverUrl: null
-        }));
+        // ONGEKI 数据 from reiwa.f5.si
+        return data.map(s => {
+            const id = s.meta?.id || String(Math.random());
+            const imgHash = s.meta?.img;
+            const coverUrl = imgHash 
+                ? `https://ongeki-net.com/ongeki-mobile/img/music/${imgHash}.png`
+                : null;
+            // 处理难度数据
+            const diffKeys = ['BAS', 'ADV', 'EXP', 'MAS', 'LUN'];
+            const diffNames = ['Basic', 'Advanced', 'Expert', 'Master', 'Lunatic'];
+            const charts = diffKeys.map((key, i) => {
+                const d = s.data?.[key];
+                return d ? {
+                    difficulty: diffNames[i],
+                    level: d.level?.toString() || '?',
+                    ds: d.const || d.level || 0
+                } : null;
+            }).filter(Boolean);
+            
+            return {
+                id,
+                title: s.meta?.title || '',
+                artist: s.meta?.artist || '',
+                category: s.meta?.genre || '',
+                version: s.meta?.release || '',
+                bpm: s.meta?.bpm || 0,
+                coverUrl,
+                levels: charts.map(c => c.level),
+                ds: charts.map(c => c.ds),
+                charts
+            };
+        });
     } else if (type === 'maimai-cn') {
         // 国服数据格式 from CrazyKidCN/maimaiDX-CN-songs-database
         return data.map(s => ({
@@ -222,22 +276,48 @@ function normalizeSongs(data, type, gameId) {
             artist: s.artist || '',
             category: s.category || '',
             version: s.version || '',
-            bpm: 0,
+            bpm: s.bpm || 0,
             coverUrl: s.image_file
                 ? `https://maimai.wahlap.com/maimai-mobile/img/Music/${s.image_file}`
-                : null
+                : null,
+            type: s.type || 'SD',
+            levels: s.level || [],
+            ds: s.ds || []
         }));
     } else if (type === 'taiko') {
         // 太鼓达人数据格式 from taikowiki/taiko-song-database
-        return data.map(s => ({
-            id: s.songNo || String(Math.random()),
-            title: s.title || '',
-            artist: s.artist || '',
-            category: s.genre || '',
-            version: '',
-            bpm: s.bpm || 0,
-            coverUrl: s.image?.url || null
-        }));
+        return data.map(s => {
+            const coverUrl = s.image?.url 
+                || s.jacket 
+                || s.coverUrl 
+                || (s.songNo ? `https://taiko.namco-ch.net/taiko/images/songimage/${s.songNo}.png` : null);
+            // 太鼓难度
+            const diffNames = ['かんたん', 'ふつう', 'むずかしい', 'おに', '裏おに'];
+            const charts = [];
+            if (s.courses) {
+                Object.entries(s.courses).forEach(([key, val]) => {
+                    if (val && typeof val === 'object') {
+                        charts.push({
+                            difficulty: diffNames[parseInt(key)] || key,
+                            level: val.level?.toString() || '?',
+                            ds: val.level || 0
+                        });
+                    }
+                });
+            }
+            return {
+                id: s.songNo || String(Math.random()),
+                title: s.title || '',
+                artist: s.artist || '',
+                category: s.genre || '',
+                version: s.version || '',
+                bpm: s.bpm || 0,
+                coverUrl,
+                levels: charts.map(c => c.level),
+                ds: charts.map(c => c.ds),
+                charts
+            };
+        });
     }
     return data;
 }
@@ -253,7 +333,14 @@ async function fetchGameSongs(gameId) {
     for (const url of config.sources) {
         try {
             console.log(`[获取] ${gameId}: ${url}`);
-            const response = await axios.get(url, { timeout: 30000 });
+            // 减少超时时间到 10 秒，避免卡住太久
+            const response = await axios.get(url, { 
+                timeout: 10000,
+                // 添加 headers 避免某些服务器拒绝请求
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
             const songs = normalizeSongs(response.data, config.normalize, gameId);
             console.log(`[获取] ${gameId}: 成功 (${songs.length}首)`);
 
@@ -264,7 +351,9 @@ async function fetchGameSongs(gameId) {
             console.error(`[获取] ${gameId} 失败:`, error.message);
         }
     }
-    throw new Error(`无法获取 ${gameId} 数据`);
+    // 如果所有源都失败，返回空数组而不是抛出错误，避免阻塞其他游戏
+    console.warn(`[获取] ${gameId}: 所有数据源均失败，返回空数据`);
+    return [];
 }
 
 // ============== 网易云音乐 API ==============
@@ -507,6 +596,34 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         const BATCH_SIZE = 5;
         let batchResults = [];
 
+        // 辅助函数：计算艺术家相似度
+        const normalizeArtist = (str) => {
+            if (!str) return '';
+            return str.toLowerCase()
+                .replace(/\s+/g, '')
+                .replace(/[,，、&＆]/g, '') // 去除分隔符
+                .replace(/feat\.?/gi, '')
+                .replace(/cv[.:]?/gi, '')
+                .replace(/[(（][^)）]*[)）]/g, ''); // 去除括号内容
+        };
+
+        const artistMatch = (userArtist, gameArtist) => {
+            const ua = normalizeArtist(userArtist);
+            const ga = normalizeArtist(gameArtist);
+            if (!ua || !ga) return 0.5; // 无法判断时给中等分数
+            if (ua === ga) return 1.0;
+            if (ua.includes(ga) || ga.includes(ua)) return 0.8;
+            // 检查是否有共同的艺术家名片段（至少3个字符）
+            const uaParts = ua.split(/[^a-z0-9\u4e00-\u9fa5]+/).filter(p => p.length >= 3);
+            const gaParts = ga.split(/[^a-z0-9\u4e00-\u9fa5]+/).filter(p => p.length >= 3);
+            for (const up of uaParts) {
+                for (const gp of gaParts) {
+                    if (up.includes(gp) || gp.includes(up)) return 0.6;
+                }
+            }
+            return 0.2;
+        };
+
         for (const userSong of userSongs) {
             const songMatches = {};
             const normalizedName = normalizeTitle(userSong.name);
@@ -519,30 +636,51 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
 
                 // 精确匹配
                 if (titleMap.has(normalizedName)) {
+                    const arcadeSong = titleMap.get(normalizedName);
+                    const artistScore = artistMatch(userSong.artists, arcadeSong.artist);
+                    // 精确匹配标题，综合艺术家相似度
+                    const finalScore = 0.8 + (artistScore * 0.2);
                     match = {
                         userSong,
-                        arcadeSong: titleMap.get(normalizedName),
-                        score: 1.0,
-                        matchType: 'exact'
+                        arcadeSong,
+                        score: finalScore,
+                        matchType: artistScore >= 0.5 ? 'exact' : 'fuzzy'
                     };
                 }
                 // 模糊匹配 (使用 fuzzysort)
                 else {
                     const results = fuzzysort.go(userSong.name, preparedSongs, {
                         key: 'preparedTitle',
-                        limit: 1,
-                        threshold: -10000 // fuzzysort 分数越高越好，负数表示匹配度
+                        limit: 3, // 取前3个结果进行艺术家比对
+                        threshold: -3000 // 提高阈值，只接受较好的匹配 (原为 -10000)
                     });
 
-                    if (results.length > 0 && results[0].score > -5000) {
-                        const normalizedScore = Math.max(0, (results[0].score + 10000) / 10000); // 转换为 0-1
-                        match = {
-                            userSong,
-                            arcadeSong: results[0].obj,
-                            score: normalizedScore,
-                            matchType: normalizedScore > 0.9 ? 'exact' : 'fuzzy'
-                        };
+                    // 从候选结果中选择最佳匹配（结合标题分数和艺术家分数）
+                    let bestMatch = null;
+                    let bestScore = 0;
+
+                    for (const result of results) {
+                        if (result.score < -2500) continue; // 跳过太差的匹配
+                        
+                        const titleScore = Math.max(0, (result.score + 3000) / 3000); // 转换为 0-1
+                        const artistScore = artistMatch(userSong.artists, result.obj.artist);
+                        
+                        // 综合分数：标题占 70%，艺术家占 30%
+                        const combinedScore = (titleScore * 0.7) + (artistScore * 0.3);
+                        
+                        // 只接受综合分数 >= 0.6 的匹配 (60% 相似度)
+                        if (combinedScore >= 0.6 && combinedScore > bestScore) {
+                            bestScore = combinedScore;
+                            bestMatch = {
+                                userSong,
+                                arcadeSong: result.obj,
+                                score: combinedScore,
+                                matchType: combinedScore >= 0.85 ? 'exact' : 'fuzzy'
+                            };
+                        }
                     }
+
+                    match = bestMatch;
                 }
 
                 if (match) {

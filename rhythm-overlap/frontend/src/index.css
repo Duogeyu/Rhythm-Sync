@@ -9,6 +9,18 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
 }
 
 /* 动态条纹背景 */
@@ -38,6 +50,32 @@
 
   100% {
     background-position: 80px 0;
+  }
+}
+
+@keyframes shine {
+  0% {
+    transform: skewX(-12deg) translateX(-100%);
+  }
+  100% {
+    transform: skewX(-12deg) translateX(200%);
+  }
+}
+
+.animate-shine {
+  animation: shine 1s ease-in-out forwards;
+}
+
+.animate-spin-slow {
+  animation: spin 8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
