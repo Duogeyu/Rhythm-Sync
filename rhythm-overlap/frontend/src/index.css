@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* 动态条纹背景 */
+.bg-stripes-animation {
+  background-image: linear-gradient(45deg,
+      #000000 12.5%,
+      transparent 12.5%,
+      transparent 50%,
+      #000000 50%,
+      #000000 62.5%,
+      transparent 62.5%,
+      transparent 100%);
+  background-size: 40px 40px;
+  animation: slide 4s linear infinite;
+}
+
+/* 蜂窝网格 */
+.bg-hex-pattern {
+  background-image: radial-gradient(#64748b 1.5px, transparent 1.5px);
+  background-size: 24px 24px;
+}
+
+@keyframes slide {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 80px 0;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  overflow: hidden;
+  /* Prevent body scroll, handle in app */
+}
