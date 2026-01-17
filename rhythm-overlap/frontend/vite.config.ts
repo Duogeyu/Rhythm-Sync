@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5188,
-    strictPort: false
+    strictPort: false,
+    host: '0.0.0.0',
+    allowedHosts: ['home.vrcc.cc', 'localhost', '127.0.0.1']
   }
 })

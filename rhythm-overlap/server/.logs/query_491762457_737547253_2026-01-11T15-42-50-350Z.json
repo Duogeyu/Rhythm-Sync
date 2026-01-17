@@ -1,0 +1,35 @@
+{
+  "sessionId": "mk9wkrtj104pl22zpab",
+  "clientIp": "::ffff:116.147.145.71",
+  "neteaseUid": "491762457",
+  "playlistId": "737547253",
+  "playlistName": "Penika进进子喜欢的音乐",
+  "songCount": 740,
+  "matchResults": {
+    "taiko": {
+      "matchCount": 33
+    },
+    "maimai": {
+      "matchCount": 84
+    },
+    "maimai-jp": {
+      "matchCount": 95
+    },
+    "maimai-cn": {
+      "matchCount": 86
+    },
+    "chunithm": {
+      "matchCount": 79
+    },
+    "chunithm-jp": {
+      "matchCount": 74
+    },
+    "ongeki": {
+      "matchCount": 57
+    }
+  },
+  "startTime": 1768146169303,
+  "endTime": 1768146170350,
+  "duration": 1047,
+  "timestamp": "2026-01-11T15:42:50.350Z"
+}

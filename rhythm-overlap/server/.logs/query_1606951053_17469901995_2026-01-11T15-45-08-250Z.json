@@ -1,0 +1,23 @@
+{
+  "sessionId": "mk9wnqwk5wwru7ylafi",
+  "clientIp": "::ffff:58.214.193.251",
+  "neteaseUid": "1606951053",
+  "playlistId": "17469901995",
+  "playlistName": "困难扒谱",
+  "songCount": 4,
+  "matchResults": {
+    "maimai": {
+      "matchCount": 2
+    },
+    "maimai-jp": {
+      "matchCount": 2
+    },
+    "maimai-cn": {
+      "matchCount": 2
+    }
+  },
+  "startTime": 1768146308084,
+  "endTime": 1768146308250,
+  "duration": 166,
+  "timestamp": "2026-01-11T15:45:08.250Z"
+}

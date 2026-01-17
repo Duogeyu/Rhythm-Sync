@@ -1,0 +1,45 @@
+{
+  "gameId": "maimai-jp",
+  "id": "1099",
+  "title": "True Love Song",
+  "artist": "Kai/クラシック「G線上のアリア」",
+  "category": "maimai",
+  "version": "10000",
+  "bpm": "150",
+  "coverUrl": "https://cdn.jsdelivr.net/gh/zvuc/otoge-db@master/maimai/jacket/c7cfd8a91e0436ac.png",
+  "type": "SD",
+  "levels": [
+    "5",
+    "7",
+    "10",
+    "12"
+  ],
+  "ds": [
+    "5.0",
+    "7.2",
+    "10.2",
+    "12.4"
+  ],
+  "charts": [
+    {
+      "difficulty": "Basic",
+      "level": "5",
+      "ds": "5.0"
+    },
+    {
+      "difficulty": "Advanced",
+      "level": "7",
+      "ds": "7.2"
+    },
+    {
+      "difficulty": "Expert",
+      "level": "10",
+      "ds": "10.2"
+    },
+    {
+      "difficulty": "Master",
+      "level": "12",
+      "ds": "12.4"
+    }
+  ]
+}

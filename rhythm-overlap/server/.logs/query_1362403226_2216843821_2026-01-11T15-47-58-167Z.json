@@ -1,0 +1,35 @@
+{
+  "sessionId": "mk9wrdw4fhk5iy0bb08",
+  "clientIp": "::ffff:39.144.157.223",
+  "neteaseUid": "1362403226",
+  "playlistId": "2216843821",
+  "playlistName": "Artcore▪艺核│古典配器与电子的碰撞",
+  "songCount": 75,
+  "matchResults": {
+    "chunithm": {
+      "matchCount": 4
+    },
+    "chunithm-jp": {
+      "matchCount": 4
+    },
+    "maimai": {
+      "matchCount": 1
+    },
+    "maimai-jp": {
+      "matchCount": 2
+    },
+    "maimai-cn": {
+      "matchCount": 1
+    },
+    "ongeki": {
+      "matchCount": 1
+    },
+    "taiko": {
+      "matchCount": 1
+    }
+  },
+  "startTime": 1768146477844,
+  "endTime": 1768146478167,
+  "duration": 323,
+  "timestamp": "2026-01-11T15:47:58.168Z"
+}

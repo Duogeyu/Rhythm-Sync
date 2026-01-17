@@ -1,0 +1,35 @@
+{
+  "sessionId": "mk9hgu35ci0jnl9rroo",
+  "clientIp": "::1",
+  "neteaseUid": "411352857",
+  "playlistId": "585498914",
+  "playlistName": "多个与喜欢的音乐",
+  "songCount": 1507,
+  "matchResults": {
+    "taiko": {
+      "matchCount": 24
+    },
+    "chunithm-jp": {
+      "matchCount": 19
+    },
+    "maimai": {
+      "matchCount": 15
+    },
+    "maimai-jp": {
+      "matchCount": 18
+    },
+    "maimai-cn": {
+      "matchCount": 15
+    },
+    "chunithm": {
+      "matchCount": 14
+    },
+    "ongeki": {
+      "matchCount": 4
+    }
+  },
+  "startTime": 1768120791377,
+  "endTime": 1768120792717,
+  "duration": 1340,
+  "timestamp": "2026-01-11T08:39:52.717Z"
+}

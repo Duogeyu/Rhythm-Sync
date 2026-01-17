@@ -1,0 +1,23 @@
+{
+  "sessionId": "mk9wvku7vm14htbt1e",
+  "clientIp": "::ffff:223.104.158.180",
+  "neteaseUid": "2126939819",
+  "playlistId": "2218567371",
+  "playlistName": "中国RAP",
+  "songCount": 130,
+  "matchResults": {
+    "chunithm": {
+      "matchCount": 1
+    },
+    "chunithm-jp": {
+      "matchCount": 1
+    },
+    "ongeki": {
+      "matchCount": 1
+    }
+  },
+  "startTime": 1768146673471,
+  "endTime": 1768146673690,
+  "duration": 219,
+  "timestamp": "2026-01-11T15:51:13.690Z"
+}

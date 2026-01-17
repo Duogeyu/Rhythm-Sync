@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/webp" href="/favicon.webp" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>落雪咖啡屋</title>
+    <!--app-head-->
+  <script async type="module" crossorigin src="/assets/index-CB4Q98gq.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-ChUOZFe2.css">
+</head>
+<body>
+<div id="root"><main></main></div>
+</body>
+</html>

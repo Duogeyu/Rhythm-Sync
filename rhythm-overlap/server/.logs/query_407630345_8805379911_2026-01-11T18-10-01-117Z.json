@@ -1,0 +1,35 @@
+{
+  "sessionId": "mka1u22kfx7czbqmq3i",
+  "clientIp": "::ffff:223.104.158.219",
+  "neteaseUid": "407630345",
+  "playlistId": "8805379911",
+  "playlistName": "舞萌DX maimai  收录/原创曲合集",
+  "songCount": 1738,
+  "matchResults": {
+    "maimai-jp": {
+      "matchCount": 1168
+    },
+    "chunithm": {
+      "matchCount": 529
+    },
+    "chunithm-jp": {
+      "matchCount": 535
+    },
+    "ongeki": {
+      "matchCount": 339
+    },
+    "taiko": {
+      "matchCount": 156
+    },
+    "maimai": {
+      "matchCount": 1006
+    },
+    "maimai-cn": {
+      "matchCount": 1018
+    }
+  },
+  "startTime": 1768155000572,
+  "endTime": 1768155001117,
+  "duration": 545,
+  "timestamp": "2026-01-11T18:10:01.117Z"
+}

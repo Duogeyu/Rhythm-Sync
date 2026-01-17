@@ -1,16 +1,62 @@
 {
   "app": {
-    "title": "Playlist Rhythm Matcher",
-    "titleMain": "Playlist ",
-    "titleAccent": "Rhythm Matcher",
-    "subtitle": "Discover your songs in arcade rhythm games",
-    "description": "Enter your NetEase Cloud Music user ID and find which arcade rhythm games feature your favorite songs"
+    "title": "Rhythm Game Matcher",
+    "titleMain": "Rhythm Game ",
+    "titleAccent": "Matcher",
+    "subtitle": "Discover your music in rhythm games",
+    "description": "Paste your music platform link or song list to find which arcade rhythm games feature your favorite songs"
+  },
+  "share": {
+    "title": "Share Results",
+    "myPlaylist": "My Playlist",
+    "withRhythm": "Rhythm game concentration is...",
+    "concentration": "Rhythm Concentration",
+    "matched": "Matched",
+    "totalMatched": "Total Matched",
+    "gameBreakdown": "Game Breakdown",
+    "songsMatched": "songs matched",
+    "topMatches": "Top Matched Songs",
+    "uniqueSongs": "unique songs",
+    "moreSongs": "more songs",
+    "showAll": "Show all {{count}} songs",
+    "showLess": "Show less",
+    "createdAt": "Shared on",
+    "comment": "Comment",
+    "generating": "AI is generating comment",
+    "includeAI": "Include AI Comment",
+    "refreshAI": "Refresh",
+    "download": "Save Image",
+    "share": "Share",
+    "shareTitle": "My Rhythm Game Playlist Match",
+    "scanToTry": "Scan to view",
+    "saveToSee": "Save to see full",
+    "levelLegend": "Legendary",
+    "levelMaster": "Master",
+    "levelExpert": "Expert",
+    "levelAdvanced": "Advanced",
+    "levelBeginner": "Beginner",
+    "expired": "Share Expired",
+    "expiredDesc": "This share link has exceeded the 3-day validity period",
+    "redirecting": "Redirecting to home...",
+    "goHome": "Go Home",
+    "tryIt": "Try it myself",
+    "tryItNow": "Try with my playlist",
+    "expiresIn": "Expires in {{hours}}h"
   },
   "input": {
     "placeholder": "Enter NetEase User ID...",
-    "submit": "Start Exploring",
+    "placeholderSmart": "Paste link or enter user ID...",
+    "placeholderMulti": "One song per line:\nSong Title\nor\nSong Title - Artist",
+    "submit": "Start Matching",
     "loading": "Fetching playlists...",
-    "hint": "You can find your user ID in the URL of your NetEase Cloud Music profile page"
+    "hint": "Supports NetEase, QQ Music, Bilibili links",
+    "modeLink": "Link/ID",
+    "modeText": "Text Import",
+    "supportedPlatforms": "Supported Platforms",
+    "typeUser": "User Playlists",
+    "typePlaylist": "Playlist",
+    "typeFavlist": "Favorites",
+    "typeSongs": "songs"
   },
   "playlist": {
     "title": "Select Playlist",
@@ -61,7 +107,10 @@
     "difficulty": "Difficulty",
     "match": "Match",
     "notes": "Notes",
-    "netease": "NetEase"
+    "netease": "NetEase",
+    "originalSong": "Original Song",
+    "arcadeSong": "Arcade Track",
+    "noDifficultyData": "No difficulty data available"
   },
   "games": {
     "maimai": "maimai DX (International)",
@@ -81,5 +130,18 @@
   "language": {
     "zh-CN": "简体中文",
     "en-US": "English"
+  },
+  "tags": {
+    "perfect_match": "Perfect Match",
+    "same_artist": "Same Artist",
+    "similar_artist": "Similar Artist",
+    "different_artist": "Possible Cover",
+    "exact_title": "Title Match",
+    "similar_title": "Similar Title",
+    "all": "All Tags"
+  },
+  "filter": {
+    "byTag": "Filter by Tag"
   }
 }
+

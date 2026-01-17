@@ -1,0 +1,60 @@
+{
+  "sessionId": "mk9e6jpn9n04g9mhre7",
+  "clientIp": "127.0.0.1",
+  "ipLocation": "本地/内网",
+  "isp": "-",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+  "browser": "Chrome",
+  "os": "Windows",
+  "device": "Desktop",
+  "screen": {
+    "width": 1920,
+    "height": 1080,
+    "colorDepth": 24,
+    "pixelRatio": 0.8999999761581421
+  },
+  "viewport": {
+    "width": 1631,
+    "height": 794
+  },
+  "language": "zh-CN",
+  "timezone": "Asia/Shanghai",
+  "touchSupport": true,
+  "connectionType": "4g",
+  "referrer": "http://localhost:5188/",
+  "neteaseUid": "411352857",
+  "playlistId": "585498914",
+  "playlistName": "多个与喜欢的音乐",
+  "songCount": 1507,
+  "matchResults": {
+    "taiko": {
+      "matchCount": 26,
+      "exactCount": 13,
+      "fuzzyCount": 13
+    },
+    "chunithm": {
+      "matchCount": 23,
+      "exactCount": 9,
+      "fuzzyCount": 14
+    },
+    "maimai": {
+      "matchCount": 21,
+      "exactCount": 9,
+      "fuzzyCount": 12
+    },
+    "maimai-cn": {
+      "matchCount": 21,
+      "exactCount": 9,
+      "fuzzyCount": 12
+    },
+    "ongeki": {
+      "matchCount": 9,
+      "exactCount": 4,
+      "fuzzyCount": 5
+    }
+  },
+  "startTime": 1768115272523,
+  "endTime": 1768115273146,
+  "duration": 623,
+  "timestamp": "2026-01-11T07:07:53.148Z"
+}

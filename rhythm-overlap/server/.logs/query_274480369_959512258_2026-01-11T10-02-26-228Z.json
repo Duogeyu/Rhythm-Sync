@@ -1,0 +1,35 @@
+{
+  "sessionId": "mk9kf0u1qaejgj50oyp",
+  "clientIp": "::ffff:139.227.76.217",
+  "neteaseUid": "274480369",
+  "playlistId": "959512258",
+  "playlistName": "maimai DX CIRCLE 舞萌DX 2025",
+  "songCount": 1389,
+  "matchResults": {
+    "maimai": {
+      "matchCount": 885
+    },
+    "maimai-jp": {
+      "matchCount": 1030
+    },
+    "maimai-cn": {
+      "matchCount": 898
+    },
+    "chunithm": {
+      "matchCount": 416
+    },
+    "chunithm-jp": {
+      "matchCount": 478
+    },
+    "taiko": {
+      "matchCount": 150
+    },
+    "ongeki": {
+      "matchCount": 297
+    }
+  },
+  "startTime": 1768125745657,
+  "endTime": 1768125746228,
+  "duration": 571,
+  "timestamp": "2026-01-11T10:02:26.228Z"
+}

@@ -23,7 +23,7 @@
   }
 }
 
-/* 动态条纹背景 */
+/* 动态条纹背景 - 保留旧样式作为 fallback 或特殊用途 */
 .bg-stripes-animation {
   background-image: linear-gradient(45deg,
       #000000 12.5%,
@@ -84,4 +84,177 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   overflow: hidden;
   /* Prevent body scroll, handle in app */
+  /* 优化移动端触摸滚动 */
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+/* 优化移动端滚动容器 */
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+/* --- PRiSM Design System --- */
+
+:root {
+  /* 主渐变色 - 梦幻天空 */
+  --prism-sky-light: #E8F4FC;
+  --prism-sky: #B8E4F9;
+  --prism-lavender: #D8C8F0;
+  --prism-pink-light: #F9D8E8;
+  --prism-pink: #F8B4D0;
+  
+  /* 彩虹色谱 */
+  --rainbow-red: #FF9B9B;
+  --rainbow-orange: #FFD093;
+  --rainbow-yellow: #FFF59D;
+  --rainbow-green: #C8E6C9;
+  --rainbow-blue: #B3E5FC;
+  --rainbow-purple: #E1BEE7;
+  
+  /* 闪光强调色 */
+  --shine-white: #FFFFFF;
+  --shine-yellow: #FFE566;
+  --shine-pink: #FFB6D9;
+  --shine-cyan: #80DEEA;
+}
+
+/* PRiSM Background Layers */
+.prism-bg-container {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.prism-bg-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #E8F4FC, #D8C8F0, #F8B4D0, #F9D8E8);
+  background-size: 100% 200%;
+  animation: prism-gradient 15s ease infinite alternate;
+}
+
+.prism-bg-aurora {
+  position: absolute;
+  width: 200%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  background-image: url('/assets/backgrounds/prism/bg_aurora_pc.png');
+  background-size: auto 100%; /* 不强制拉伸，保持比例，但高度填满 */
+  background-repeat: repeat-x;
+  opacity: 0.8; /* 稍微增加透明度，配合混合模式 */
+  mix-blend-mode: screen; /* 关键：混合模式 */
+  animation: prism-aurora 60s linear infinite;
+  will-change: transform;
+}
+
+.prism-bg-cloud {
+  position: absolute;
+  background-size: contain;
+  background-repeat: no-repeat;
+  will-change: transform;
+}
+
+/* 背景云 */
+.cloud-back-l { background-image: url('/assets/backgrounds/prism/bg_cloud_back_l.png'); }
+.cloud-back-c { background-image: url('/assets/backgrounds/prism/bg_cloud_back_c.png'); }
+.cloud-back-r { background-image: url('/assets/backgrounds/prism/bg_cloud_back_r.png'); }
+
+/* 前景云 */
+.cloud-front-l { background-image: url('/assets/backgrounds/prism/bg_cloud_front_l.png'); }
+.cloud-front-c { background-image: url('/assets/backgrounds/prism/bg_cloud_front_c.png'); }
+.cloud-front-r { background-image: url('/assets/backgrounds/prism/bg_cloud_front_r.png'); }
+
+.prism-bg-moon {
+  position: absolute;
+  background-image: url('/assets/backgrounds/prism/bg_moon.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  animation: prism-moon 6s ease-in-out infinite alternate;
+}
+
+.prism-bg-rainbow {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background-image: url('/assets/backgrounds/prism/bg_rainbow_btm_pc.png');
+  background-size: cover;
+  background-position: bottom;
+  opacity: 0.8;
+  animation: fade-in-up 2s ease-out;
+}
+
+.prism-bg-shine {
+  position: absolute;
+  /* 闪光通常用 div + mask 或者多个小 div，这里先假设用背景图 */
+  /* 实际闪光应该是分散的小元素，这里先定义动画类 */
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+/* Animations */
+@keyframes prism-gradient {
+  0% { background-position: 50% 0%; }
+  100% { background-position: 50% 100%; }
+}
+
+@keyframes blob {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* UI Component Styles */
+.prism-card {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 8px 32px rgba(216, 200, 240, 0.25),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.prism-button {
+  background: linear-gradient(135deg, var(--prism-pink) 0%, var(--prism-sky) 100%);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 15px rgba(248, 180, 208, 0.4);
+  transition: all 0.2s ease;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.prism-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(248, 180, 208, 0.6);
+  filter: brightness(1.05);
+}
+
+.prism-button:active {
+  transform: translateY(1px);
 }

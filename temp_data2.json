@@ -1,0 +1,74 @@
+{
+  "gameId": "maimai",
+  "id": "8",
+  "title": "True Love Song",
+  "artist": "Kai/クラシック「G線上のアリア」",
+  "category": "舞萌",
+  "version": "maimai",
+  "bpm": 150,
+  "coverUrl": "https://www.diving-fish.com/covers/00008.png",
+  "type": "SD",
+  "isNew": false,
+  "levels": [
+    "5",
+    "7",
+    "10",
+    "12"
+  ],
+  "ds": [
+    5,
+    7.2,
+    10.2,
+    12.4
+  ],
+  "charts": [
+    {
+      "difficulty": "Basic",
+      "level": "5",
+      "ds": 5,
+      "charter": "-",
+      "notes": [
+        63,
+        23,
+        8,
+        2
+      ]
+    },
+    {
+      "difficulty": "Advanced",
+      "level": "7",
+      "ds": 7.2,
+      "charter": "-",
+      "notes": [
+        85,
+        27,
+        6,
+        4
+      ]
+    },
+    {
+      "difficulty": "Expert",
+      "level": "10",
+      "ds": 10.2,
+      "charter": "譜面-100号",
+      "notes": [
+        110,
+        56,
+        9,
+        2
+      ]
+    },
+    {
+      "difficulty": "Master",
+      "level": "12",
+      "ds": 12.4,
+      "charter": "ニャイン",
+      "notes": [
+        263,
+        14,
+        19,
+        6
+      ]
+    }
+  ]
+}

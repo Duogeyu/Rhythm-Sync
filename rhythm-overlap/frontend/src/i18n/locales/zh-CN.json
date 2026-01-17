@@ -1,16 +1,62 @@
 {
   "app": {
-    "title": "歌单音游匹配",
-    "titleMain": "歌单",
-    "titleAccent": "音游匹配",
-    "subtitle": "发现你的歌曲在哪些音游中",
-    "description": "输入你的网易云音乐用户ID，我们会帮你找到这些歌曲在哪些街机音游中出现"
+    "title": "节奏游戏匹配器",
+    "titleMain": "歌单音游",
+    "titleAccent": "匹配器",
+    "subtitle": "看看哪些街机音游有你喜欢的歌曲",
+    "description": "输入你的音乐平台链接或歌曲列表，我们会帮你找到这些歌曲在哪些街机音游中出现"
+  },
+  "share": {
+    "title": "分享结果",
+    "myPlaylist": "我的歌单",
+    "withRhythm": "与音游的浓度达到了...",
+    "concentration": "音游浓度",
+    "matched": "首匹配",
+    "totalMatched": "总匹配",
+    "gameBreakdown": "各游戏匹配详情",
+    "songsMatched": "首匹配",
+    "topMatches": "热门匹配歌曲",
+    "uniqueSongs": "首不重复",
+    "moreSongs": "更多歌曲",
+    "showAll": "查看全部 {{count}} 首",
+    "showLess": "收起",
+    "createdAt": "分享于",
+    "comment": "锐评",
+    "generating": "AI 正在生成锐评",
+    "includeAI": "包含 AI 锐评",
+    "refreshAI": "换一个",
+    "download": "保存图片",
+    "share": "分享",
+    "shareTitle": "我的音游歌单浓度",
+    "scanToTry": "扫码查看",
+    "saveToSee": "保存查看完整",
+    "levelLegend": "传说级",
+    "levelMaster": "大师级",
+    "levelExpert": "专家级",
+    "levelAdvanced": "进阶级",
+    "levelBeginner": "入门级",
+    "expired": "分享已过期",
+    "expiredDesc": "此分享链接已超过3天有效期",
+    "redirecting": "正在跳转首页...",
+    "goHome": "返回首页",
+    "tryIt": "我也要试试",
+    "tryItNow": "我也要测测我的歌单",
+    "expiresIn": "{{hours}}小时后过期"
   },
   "input": {
     "placeholder": "输入网易云用户ID...",
-    "submit": "开始探索",
+    "placeholderSmart": "粘贴链接或输入用户ID...",
+    "placeholderMulti": "每行一首歌曲，格式：\n歌名\n或\n歌名 - 歌手",
+    "submit": "开始匹配",
     "loading": "获取歌单中...",
-    "hint": "在网易云音乐个人主页地址栏中可以找到你的用户ID"
+    "hint": "支持网易云、QQ音乐、B站收藏夹链接",
+    "modeLink": "链接/ID",
+    "modeText": "文本导入",
+    "supportedPlatforms": "支持的平台",
+    "typeUser": "用户歌单",
+    "typePlaylist": "歌单",
+    "typeFavlist": "收藏夹",
+    "typeSongs": "首歌曲"
   },
   "playlist": {
     "title": "选择歌单",
@@ -59,9 +105,12 @@
     "bpm": "BPM",
     "source": "来源",
     "difficulty": "难度",
-    "match": "匹配度",
+    "match": "匹配",
     "notes": "物量",
-    "netease": "网易云"
+    "netease": "网易云",
+    "originalSong": "原始歌曲",
+    "arcadeSong": "街机曲目",
+    "noDifficultyData": "暂无难度数据"
   },
   "games": {
     "maimai": "maimai DX (国际)",
@@ -81,5 +130,18 @@
   "language": {
     "zh-CN": "简体中文",
     "en-US": "English"
+  },
+  "tags": {
+    "perfect_match": "完美匹配",
+    "same_artist": "同歌手",
+    "similar_artist": "相似歌手",
+    "different_artist": "可能翻唱",
+    "exact_title": "标题匹配",
+    "similar_title": "标题相似",
+    "all": "全部标签"
+  },
+  "filter": {
+    "byTag": "按标签筛选"
   }
 }
+

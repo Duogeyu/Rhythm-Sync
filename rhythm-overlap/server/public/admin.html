@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rhythm Overlap 管理后台</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #22d3ee, #f472b6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: #64748b;
+            font-size: 14px;
+            margin-bottom: 32px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .local-badge {
+            background: #065f46;
+            color: #34d399;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: #22d3ee;
+            border-radius: 2px;
+        }
+
+        .card-desc {
+            color: #94a3b8;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .btn-primary {
+            background: #22d3ee;
+            color: #0f172a;
+        }
+
+        .btn-primary:hover {
+            background: #06b6d4;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-secondary {
+            background: #334155;
+            color: #e2e8f0;
+        }
+
+        .btn-secondary:hover {
+            background: #475569;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* 游戏数据源配置卡片 */
+        .game-config-card {
+            background: #0f172a;
+            border: 2px solid #334155;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all 0.3s;
+        }
+
+        .game-config-card:hover {
+            border-color: #475569;
+        }
+
+        .game-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .game-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .game-color {
+            width: 8px;
+            height: 40px;
+            border-radius: 4px;
+        }
+
+        .game-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: #f1f5f9;
+        }
+
+        .game-source-name {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+
+        .source-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .source-option {
+            background: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 10px;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 180px;
+            flex: 1;
+        }
+
+        .source-option:hover {
+            border-color: #475569;
+            background: #253041;
+        }
+
+        .source-option.active {
+            border-color: #22d3ee;
+            background: rgba(34, 211, 238, 0.1);
+        }
+
+        .source-option-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #f1f5f9;
+            margin-bottom: 4px;
+        }
+
+        .source-option.active .source-option-name {
+            color: #22d3ee;
+        }
+
+        .source-option-desc {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .source-option.active::after {
+            content: '✓';
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #22d3ee;
+            color: #0f172a;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .source-option {
+            position: relative;
+        }
+
+        /* 快速预设 */
+        .preset-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .preset-btn {
+            background: #1e293b;
+            border: 2px solid #334155;
+            color: #e2e8f0;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            border-color: #22d3ee;
+            background: rgba(34, 211, 238, 0.1);
+        }
+
+        .preset-btn.active {
+            border-color: #22d3ee;
+            background: #22d3ee;
+            color: #0f172a;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px;
+            animation: slideIn 0.3s ease;
+            z-index: 1000;
+            max-width: 400px;
+        }
+
+        .toast-success {
+            background: #065f46;
+            color: #34d399;
+        }
+
+        .toast-error {
+            background: #7f1d1d;
+            color: #fca5a5;
+        }
+
+        .toast-info {
+            background: #1e40af;
+            color: #93c5fd;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(100px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* 缓存列表 */
+        .cache-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #334155;
+        }
+
+        .cache-item:last-child {
+            border-bottom: none;
+        }
+
+        .cache-name {
+            font-weight: 600;
+        }
+
+        .cache-info {
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .cache-expired {
+            color: #f87171;
+        }
+
+        /* 日志 */
+        .log-item {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-info {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .log-time {
+            color: #64748b;
+            font-family: monospace;
+        }
+
+        .log-uid {
+            color: #22d3ee;
+            font-weight: 600;
+        }
+
+        .log-playlist {
+            color: #e2e8f0;
+        }
+
+        .log-matches {
+            color: #34d399;
+        }
+
+        /* 标签页 */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: #0f172a;
+            padding: 4px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            background: transparent;
+            color: #94a3b8;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: #e2e8f0;
+        }
+
+        .tab.active {
+            background: #22d3ee;
+            color: #0f172a;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .info-box {
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid #22d3ee;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 16px;
+            font-size: 13px;
+            color: #67e8f9;
+        }
+
+        .warning-box {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid #fbbf24;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 16px;
+            font-size: 13px;
+            color: #fcd34d;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #64748b;
+            border-top-color: #22d3ee;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+
+        .source-url {
+            font-family: monospace;
+            font-size: 10px;
+            color: #475569;
+            margin-top: 6px;
+            word-break: break-all;
+        }
+
+        /* Switch 开关样式 */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .switch .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #334155;
+            transition: .3s;
+            border-radius: 26px;
+        }
+
+        .switch .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        .switch input:checked + .slider {
+            background-color: #22d3ee;
+        }
+
+        .switch input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+
+        /* 封面统计卡片 */
+        .covers-stat-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .covers-stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: #22d3ee;
+            margin-bottom: 4px;
+        }
+
+        .covers-stat-label {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .covers-game-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #0f172a;
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+
+        .covers-game-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .covers-game-name {
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .covers-game-stats {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .progress-bar {
+            width: 100px;
+            height: 6px;
+            background: #334155;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: #22d3ee;
+            transition: width 0.3s;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 800;
+            color: #22d3ee;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* 访客列表样式 */
+        .visitor-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            background: #0f172a;
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+
+        .visitor-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .visitor-rank {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #334155;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .visitor-rank.top1 { background: #fbbf24; color: #0f172a; }
+        .visitor-rank.top2 { background: #94a3b8; color: #0f172a; }
+        .visitor-rank.top3 { background: #cd7f32; color: #0f172a; }
+
+        .visitor-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .visitor-ip {
+            font-family: monospace;
+            font-size: 13px;
+            color: #e2e8f0;
+        }
+
+        .visitor-location {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .visitor-isp {
+            font-size: 11px;
+            color: #475569;
+        }
+
+        .visitor-count {
+            font-weight: 700;
+            color: #22d3ee;
+            font-size: 14px;
+        }
+
+        /* 增强的日志样式 */
+        .log-item-enhanced {
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #334155;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .log-main-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .log-time-badge {
+            font-size: 12px;
+            color: #64748b;
+            font-family: monospace;
+        }
+
+        .log-playlist-name {
+            font-weight: 600;
+            font-size: 15px;
+            color: #f1f5f9;
+        }
+
+        .log-meta {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            font-size: 13px;
+        }
+
+        .log-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .log-meta-item .icon {
+            color: #64748b;
+        }
+
+        .log-meta-item .value {
+            color: #e2e8f0;
+        }
+
+        .log-ip-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+
+        .log-ip {
+            font-family: monospace;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .log-location {
+            font-size: 11px;
+            color: #64748b;
+            text-align: right;
+        }
+
+        .log-stats {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .log-stat-badge {
+            background: #1e293b;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .log-stat-badge.highlight {
+            background: rgba(34, 211, 238, 0.15);
+            color: #22d3ee;
+        }
+
+        /* 游戏统计卡片 */
+        .game-stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            background: #0f172a;
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+
+        .game-stat-name {
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .game-stat-values {
+            display: flex;
+            gap: 24px;
+            font-size: 13px;
+        }
+
+        .game-stat-values span {
+            color: #94a3b8;
+        }
+
+        .game-stat-values strong {
+            color: #22d3ee;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>⚙️ Rhythm Overlap 管理后台</h1>
+        <p class="subtitle">
+            数据源配置 · 缓存管理 · 查询日志
+            <span class="local-badge">🔒 仅限本地访问</span>
+        </p>
+
+        <!-- 标签页导航 -->
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('stats')">📊 访问统计</button>
+            <button class="tab" onclick="switchTab('logs')">📋 访问记录</button>
+            <button class="tab" onclick="switchTab('sources')">📦 数据源配置</button>
+            <button class="tab" onclick="switchTab('cache')">💾 缓存管理</button>
+            <button class="tab" onclick="switchTab('covers')">🖼️ 封面缓存</button>
+        </div>
+
+        <!-- 访问统计 -->
+        <div id="tab-stats" class="tab-content active">
+            <div class="card">
+                <div class="card-title">📊 实时统计</div>
+                <div id="stats-overview" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-today-queries">-</div>
+                        <div class="stat-label">今日查询</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-today-ips">-</div>
+                        <div class="stat-label">今日访客</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-total-queries">-</div>
+                        <div class="stat-label">总查询数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-unique-ips">-</div>
+                        <div class="stat-label">独立IP数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-unique-uids">-</div>
+                        <div class="stat-label">独立UID</div>
+                    </div>
+                </div>
+                <div class="btn-group" style="margin-bottom: 16px;">
+                    <button class="btn btn-secondary" onclick="loadStats()">🔃 刷新统计</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🌍 访客地区 TOP 10</div>
+                <div id="top-ips-list">
+                    <div class="empty-state"><span class="loading"></span> 加载中...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">👤 活跃用户 TOP 10</div>
+                <div id="top-uids-list">
+                    <div class="empty-state"><span class="loading"></span> 加载中...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🎮 游戏匹配统计</div>
+                <div id="game-stats-list">
+                    <div class="empty-state"><span class="loading"></span> 加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据源配置 -->
+        <div id="tab-sources" class="tab-content">
+            <!-- 快速预设 -->
+            <div class="card">
+                <div class="card-title">快速预设</div>
+                <div class="card-desc">一键应用预设配置，快速切换所有游戏的数据源</div>
+                <div class="preset-buttons">
+                    <button class="preset-btn" onclick="applyPreset('default')">
+                        🎯 默认配置
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Diving-Fish + 国服</div>
+                    </button>
+                    <button class="preset-btn" onclick="applyPreset('otoge-jp')">
+                        🇯🇵 OTOGE-DB 日服
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">日服最新数据</div>
+                    </button>
+                    <button class="preset-btn" onclick="applyPreset('otoge-intl')">
+                        🌏 OTOGE-DB 国际
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">国际服数据</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 每个游戏的数据源配置 -->
+            <div class="card">
+                <div class="card-title">游戏数据源配置</div>
+                <div class="card-desc">为每个游戏单独选择数据源，点击选项即可切换</div>
+                <div id="games-config">
+                    <div class="empty-state"><span class="loading"></span> 加载中...</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <strong>💡 关于数据源</strong><br>
+                不同数据源有不同的数据格式和覆盖范围：<br>
+                • <strong>Diving-Fish</strong>：水鱼查分器 API，数据稳定，覆盖 maimai/CHUNITHM<br>
+                • <strong>OTOGE-DB</strong>：<a href="https://github.com/zvuc/otoge-db" target="_blank" style="color: #22d3ee;">开源项目</a>，覆盖日服/国际服 maimai/CHUNITHM/ONGEKI<br>
+                • <strong>CrazyKid</strong>：国服 maimai 专用数据库<br>
+                • <strong>Taiko Wiki</strong>：太鼓达人数据库
+            </div>
+        </div>
+
+        <!-- 缓存管理 -->
+        <div id="tab-cache" class="tab-content">
+            <div class="card">
+                <div class="card-title">缓存管理</div>
+                <div class="card-desc">
+                    缓存有效期为 24 小时。切换数据源后建议清除对应游戏的缓存。
+                </div>
+                <div class="btn-group" style="margin-bottom: 20px;">
+                    <button class="btn btn-danger" onclick="clearAllCache()">🗑️ 清空所有缓存</button>
+                    <button class="btn btn-success" onclick="prefetchAll()">⬇️ 预取所有数据</button>
+                    <button class="btn btn-secondary" onclick="loadCache()">🔃 刷新状态</button>
+                </div>
+                <div id="cache-list">
+                    <div class="empty-state"><span class="loading"></span> 加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 封面缓存管理 -->
+        <div id="tab-covers" class="tab-content">
+            <div class="card">
+                <div class="card-title">封面缓存配置</div>
+                <div class="card-desc">
+                    启用封面缓存可以加速加载速度，支持配置 CDN 自动分发
+                </div>
+                <div style="display: grid; gap: 16px; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <label style="min-width: 120px; color: #94a3b8;">启用封面缓存</label>
+                        <label class="switch">
+                            <input type="checkbox" id="covers-enabled" onchange="updateCoversConfig()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <label style="min-width: 120px; color: #94a3b8;">CDN 基础 URL</label>
+                        <input type="text" id="cdn-base-url" placeholder="留空使用本地代理，如: https://cdn.example.com/covers" 
+                               style="flex: 1; padding: 10px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 13px;">
+                        <button class="btn btn-sm btn-primary" onclick="updateCoversConfig()">保存</button>
+                    </div>
+                </div>
+                <div id="covers-stats" style="margin-bottom: 20px;">
+                    <div class="empty-state"><span class="loading"></span> 加载中...</div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-danger" onclick="clearAllCovers()">🗑️ 清空所有封面</button>
+                    <button class="btn btn-secondary" onclick="loadCoversConfig()">🔃 刷新状态</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">按游戏缓存封面</div>
+                <div class="card-desc">选择游戏开始缓存封面，缓存过程在后台运行</div>
+                <div id="covers-games">
+                    <div class="empty-state"><span class="loading"></span> 加载中...</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <strong>💡 关于封面缓存</strong><br>
+                • 封面缓存可以减少对外部服务器的请求，提高加载速度<br>
+                • 配置 CDN URL 后，前端会自动使用 CDN 地址加载封面<br>
+                • 缓存目录: <code id="covers-dir" style="background: #0f172a; padding: 2px 6px; border-radius: 4px;">-</code>
+            </div>
+        </div>
+
+        <!-- 查询日志 -->
+        <div id="tab-logs" class="tab-content">
+            <div class="card">
+                <div class="card-title">访问记录</div>
+                <div class="card-desc">显示最近的查询记录，包含 IP 归属地信息</div>
+                <div class="btn-group" style="margin-bottom: 16px;">
+                    <button class="btn btn-secondary" onclick="loadLogs()">🔃 刷新记录</button>
+                    <select id="logs-limit" onchange="loadLogs()" style="padding: 10px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 13px;">
+                        <option value="20">显示 20 条</option>
+                        <option value="50" selected>显示 50 条</option>
+                        <option value="100">显示 100 条</option>
+                    </select>
+                </div>
+                <div id="logs-list">
+                    <div class="empty-state"><span class="loading"></span> 加载中...</div>
+                </div>
+                <div id="logs-pagination" style="margin-top: 16px; display: flex; justify-content: center; gap: 8px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = `http://${window.location.hostname}:3002`;
+
+        // 游戏颜色映射
+        const GAME_COLORS = {
+            'maimai': '#FFD700',
+            'maimai-cn': '#FF8C00',
+            'chunithm': '#00CED1',
+            'ongeki': '#9932CC',
+            'taiko': '#FF6347'
+        };
+
+        // 显示 Toast
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // 切换标签页
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+        }
+
+        // 加载游戏数据源配置
+        async function loadSources() {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/sources`);
+                const data = await res.json();
+                
+                if (!data.success) {
+                    document.getElementById('games-config').innerHTML = 
+                        `<div class="empty-state" style="color: #ef4444;">${data.error || '加载失败'}</div>`;
+                    return;
+                }
+
+                let html = '';
+                for (const [gameId, info] of Object.entries(data.sources)) {
+                    const game = info.game;
+                    const color = game?.color || GAME_COLORS[gameId] || '#666';
+                    
+                    html += `
+                        <div class="game-config-card" data-game-id="${gameId}">
+                            <div class="game-header">
+                                <div class="game-info">
+                                    <div class="game-color" style="background: ${color}"></div>
+                                    <div>
+                                        <div class="game-name">${game?.name || gameId}</div>
+                                        <div class="game-source-name">当前: ${info.availableSources.find(s => s.isActive)?.name || '未知'}</div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-secondary" onclick="clearCache('${gameId}')">清除缓存</button>
+                            </div>
+                            <div class="source-options">
+                                ${info.availableSources.map(source => `
+                                    <div class="source-option ${source.isActive ? 'active' : ''}" 
+                                         onclick="switchSource('${gameId}', '${source.id}')"
+                                         data-source-id="${source.id}">
+                                        <div class="source-option-name">${source.name}</div>
+                                        <div class="source-option-desc">${source.description || ''}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                document.getElementById('games-config').innerHTML = html || '<div class="empty-state">暂无配置</div>';
+            } catch (e) {
+                console.error(e);
+                document.getElementById('games-config').innerHTML = 
+                    `<div class="empty-state" style="color: #ef4444;">加载失败: ${e.message}</div>`;
+            }
+        }
+
+        // 切换数据源
+        async function switchSource(gameId, sourceId) {
+            // 检查是否已经是当前选中的
+            const card = document.querySelector(`[data-game-id="${gameId}"]`);
+            const option = card?.querySelector(`[data-source-id="${sourceId}"]`);
+            if (option?.classList.contains('active')) {
+                return;
+            }
+
+            try {
+                showToast('正在切换...', 'info');
+                
+                const res = await fetch(`${API_BASE}/api/admin/switch-source`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gameId, sourceId })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`已切换: ${data.sourceName}`);
+                    // 更新 UI
+                    if (card) {
+                        card.querySelectorAll('.source-option').forEach(opt => {
+                            opt.classList.remove('active');
+                        });
+                        option?.classList.add('active');
+                        
+                        // 更新显示的数据源名称
+                        const nameEl = card.querySelector('.game-source-name');
+                        if (nameEl) nameEl.textContent = `当前: ${data.sourceName}`;
+                    }
+                    // 清除该游戏的缓存
+                    await clearCache(gameId, true);
+                } else {
+                    showToast(data.error || '切换失败', 'error');
+                }
+            } catch (e) {
+                showToast('请求失败: ' + e.message, 'error');
+            }
+        }
+
+        // 应用预设
+        async function applyPreset(preset) {
+            if (!confirm(`确定要应用预设 "${preset}" 吗？\n这将更改多个游戏的数据源并清除缓存。`)) {
+                return;
+            }
+
+            try {
+                showToast('正在应用预设...', 'info');
+                
+                const res = await fetch(`${API_BASE}/api/admin/apply-preset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ preset })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`预设已应用，变更 ${data.changes.length} 项`);
+                    // 清除所有缓存
+                    await clearAllCache(true);
+                    // 重新加载
+                    loadSources();
+                } else {
+                    showToast(data.error || '应用失败', 'error');
+                }
+            } catch (e) {
+                showToast('请求失败: ' + e.message, 'error');
+            }
+        }
+
+        // 加载缓存状态
+        async function loadCache() {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/cache-status`);
+                const data = await res.json();
+                
+                if (data.success) {
+                    if (data.cacheFiles.length === 0) {
+                        document.getElementById('cache-list').innerHTML = 
+                            '<div class="empty-state">暂无缓存数据</div>';
+                        return;
+                    }
+                    
+                    const html = data.cacheFiles.map(f => `
+                        <div class="cache-item">
+                            <div>
+                                <div class="cache-name">${f.gameId}</div>
+                                <div class="cache-info ${f.isExpired ? 'cache-expired' : ''}">
+                                    ${f.error ? `❌ ${f.error}` : `${f.songCount} 首 · ${f.size} · ${f.age} ${f.isExpired ? '(已过期)' : ''}`}
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-sm btn-secondary" onclick="prefetchGame('${f.gameId}')">刷新</button>
+                                <button class="btn btn-sm btn-danger" onclick="clearCache('${f.gameId}')">清除</button>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    document.getElementById('cache-list').innerHTML = html;
+                }
+            } catch (e) {
+                document.getElementById('cache-list').innerHTML = 
+                    '<div class="empty-state">无法获取缓存状态</div>';
+            }
+        }
+
+        // 当前日志页码
+        let currentLogsPage = 1;
+
+        // 加载统计数据
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/stats`);
+                const data = await res.json();
+                
+                if (data.success) {
+                    const s = data.stats;
+                    
+                    // 更新概览数字
+                    document.getElementById('stat-today-queries').textContent = s.todayQueries;
+                    document.getElementById('stat-today-ips').textContent = s.todayIps;
+                    document.getElementById('stat-total-queries').textContent = s.totalQueries;
+                    document.getElementById('stat-unique-ips').textContent = s.uniqueIps;
+                    document.getElementById('stat-unique-uids').textContent = s.uniqueUids;
+                    
+                    // 更新 Top IP 列表
+                    if (s.topIps && s.topIps.length > 0) {
+                        document.getElementById('top-ips-list').innerHTML = s.topIps.map((item, i) => `
+                            <div class="visitor-item">
+                                <div class="visitor-info">
+                                    <div class="visitor-rank ${i < 3 ? 'top' + (i + 1) : ''}">${i + 1}</div>
+                                    <div class="visitor-details">
+                                        <span class="visitor-ip">${item.ip}</span>
+                                        <span class="visitor-location">📍 ${item.location || '未知'}</span>
+                                        ${item.isp ? `<span class="visitor-isp">🏢 ${item.isp}</span>` : ''}
+                                    </div>
+                                </div>
+                                <span class="visitor-count">${item.count} 次</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        document.getElementById('top-ips-list').innerHTML = '<div class="empty-state">暂无数据</div>';
+                    }
+                    
+                    // 更新 Top UID 列表
+                    if (s.topUids && s.topUids.length > 0) {
+                        document.getElementById('top-uids-list').innerHTML = s.topUids.map((item, i) => `
+                            <div class="visitor-item">
+                                <div class="visitor-info">
+                                    <div class="visitor-rank ${i < 3 ? 'top' + (i + 1) : ''}">${i + 1}</div>
+                                    <div class="visitor-details">
+                                        <span class="visitor-ip">UID: ${item.uid}</span>
+                                    </div>
+                                </div>
+                                <span class="visitor-count">${item.count} 次</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        document.getElementById('top-uids-list').innerHTML = '<div class="empty-state">暂无数据</div>';
+                    }
+                    
+                    // 更新游戏统计
+                    const gameNames = {
+                        'maimai': 'maimai DX (国际)',
+                        'maimai-jp': 'maimai DX (日服)',
+                        'maimai-cn': 'maimai DX (国服)',
+                        'chunithm': 'CHUNITHM (国际)',
+                        'chunithm-jp': 'CHUNITHM (日服)',
+                        'ongeki': 'ONGEKI',
+                        'taiko': '太鼓の達人'
+                    };
+                    
+                    if (s.gameStats && Object.keys(s.gameStats).length > 0) {
+                        document.getElementById('game-stats-list').innerHTML = Object.entries(s.gameStats)
+                            .sort((a, b) => b[1].queries - a[1].queries)
+                            .map(([gameId, stat]) => `
+                                <div class="game-stat-item">
+                                    <span class="game-stat-name">${gameNames[gameId] || gameId}</span>
+                                    <div class="game-stat-values">
+                                        <span>查询: <strong>${stat.queries}</strong></span>
+                                        <span>匹配: <strong>${stat.totalMatches}</strong></span>
+                                    </div>
+                                </div>
+                            `).join('');
+                    } else {
+                        document.getElementById('game-stats-list').innerHTML = '<div class="empty-state">暂无数据</div>';
+                    }
+                }
+            } catch (e) {
+                console.error('加载统计失败:', e);
+                document.getElementById('top-ips-list').innerHTML = '<div class="empty-state" style="color: #ef4444;">加载失败</div>';
+            }
+        }
+
+        // 加载日志（增强版）
+        async function loadLogs(page = 1) {
+            currentLogsPage = page;
+            const limit = document.getElementById('logs-limit')?.value || 50;
+            
+            try {
+                document.getElementById('logs-list').innerHTML = '<div class="empty-state"><span class="loading"></span> 加载中...</div>';
+                
+                const res = await fetch(`${API_BASE}/api/admin/recent-logs?limit=${limit}&page=${page}&location=true`);
+                const data = await res.json();
+                
+                if (data.success && data.logs.length > 0) {
+                    const html = data.logs.map(log => {
+                        const location = log.location ? 
+                            `${log.location.country} ${log.location.region} ${log.location.city}`.trim() : '';
+                        
+                        return `
+                            <div class="log-item-enhanced">
+                                <div class="log-header">
+                                    <div class="log-main-info">
+                                        <span class="log-time-badge">${new Date(log.timestamp).toLocaleString()}</span>
+                                        <span class="log-playlist-name">${log.playlistName || '文本导入'}</span>
+                                    </div>
+                                    <div class="log-ip-info">
+                                        <span class="log-ip">${log.clientIp || '-'}</span>
+                                        <span class="log-location">📍 ${location || '本地'}</span>
+                                        ${log.location?.isp ? `<span class="log-location">🏢 ${log.location.isp}</span>` : ''}
+                                    </div>
+                                </div>
+                                <div class="log-meta">
+                                    <div class="log-meta-item">
+                                        <span class="icon">👤</span>
+                                        <span class="value">${log.neteaseUid === 'text_import' ? '文本导入' : 'UID: ' + log.neteaseUid}</span>
+                                    </div>
+                                    <div class="log-meta-item">
+                                        <span class="icon">🎵</span>
+                                        <span class="value">${log.songCount} 首歌曲</span>
+                                    </div>
+                                    <div class="log-meta-item">
+                                        <span class="icon">⏱️</span>
+                                        <span class="value">${log.duration || 0}ms</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    document.getElementById('logs-list').innerHTML = html;
+                    
+                    // 更新分页
+                    const { pagination } = data;
+                    if (pagination && pagination.totalPages > 1) {
+                        let paginationHtml = '';
+                        
+                        // 上一页
+                        if (pagination.page > 1) {
+                            paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadLogs(${pagination.page - 1})">← 上一页</button>`;
+                        }
+                        
+                        // 页码信息
+                        paginationHtml += `<span style="color: #64748b; font-size: 13px; padding: 0 12px;">第 ${pagination.page} / ${pagination.totalPages} 页 (共 ${pagination.total} 条)</span>`;
+                        
+                        // 下一页
+                        if (pagination.page < pagination.totalPages) {
+                            paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadLogs(${pagination.page + 1})">下一页 →</button>`;
+                        }
+                        
+                        document.getElementById('logs-pagination').innerHTML = paginationHtml;
+                    } else {
+                        document.getElementById('logs-pagination').innerHTML = '';
+                    }
+                } else {
+                    document.getElementById('logs-list').innerHTML = '<div class="empty-state">暂无查询记录</div>';
+                    document.getElementById('logs-pagination').innerHTML = '';
+                }
+            } catch (e) {
+                document.getElementById('logs-list').innerHTML = '<div class="empty-state" style="color: #ef4444;">无法获取日志</div>';
+                document.getElementById('logs-pagination').innerHTML = '';
+            }
+        }
+
+        // 清除缓存
+        async function clearCache(gameId, silent = false) {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/clear-cache`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gameId })
+                });
+                const data = await res.json();
+                
+                if (data.success && !silent) {
+                    showToast(data.message);
+                    loadCache();
+                }
+            } catch (e) {
+                if (!silent) showToast('请求失败', 'error');
+            }
+        }
+
+        // 清空所有缓存
+        async function clearAllCache(silent = false) {
+            if (!silent && !confirm('确定要清空所有缓存吗？')) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/clear-cache`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                
+                if (data.success && !silent) {
+                    showToast(data.message);
+                    loadCache();
+                }
+            } catch (e) {
+                if (!silent) showToast('请求失败', 'error');
+            }
+        }
+
+        // 预取单个游戏
+        async function prefetchGame(gameId) {
+            try {
+                showToast(`正在预取 ${gameId}...`, 'info');
+                
+                const res = await fetch(`${API_BASE}/api/admin/prefetch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gameIds: [gameId] })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    const result = data.results[gameId];
+                    if (result.success) {
+                        showToast(`${gameId}: 已获取 ${result.songCount} 首`);
+                    } else {
+                        showToast(`${gameId}: ${result.error}`, 'error');
+                    }
+                    loadCache();
+                }
+            } catch (e) {
+                showToast('请求失败', 'error');
+            }
+        }
+
+        // 预取所有
+        async function prefetchAll() {
+            try {
+                showToast('正在预取所有数据...', 'info');
+                
+                const res = await fetch(`${API_BASE}/api/admin/prefetch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    const summary = Object.entries(data.results)
+                        .map(([id, r]) => r.success ? `${id}: ${r.songCount}` : `${id}: 失败`)
+                        .join(', ');
+                    showToast(`预取完成`);
+                    loadCache();
+                }
+            } catch (e) {
+                showToast('请求失败', 'error');
+            }
+        }
+
+        // ============== 封面缓存管理 ==============
+        
+        // 加载封面配置
+        async function loadCoversConfig() {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/covers/config`);
+                const data = await res.json();
+                
+                if (data.success) {
+                    // 更新配置表单
+                    document.getElementById('covers-enabled').checked = data.config.enabled;
+                    document.getElementById('cdn-base-url').value = data.config.cdnBaseUrl || '';
+                    document.getElementById('covers-dir').textContent = data.coversDir;
+                    
+                    // 更新统计
+                    const stats = data.stats;
+                    document.getElementById('covers-stats').innerHTML = `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                            <div class="covers-stat-card">
+                                <div class="covers-stat-value">${stats.totalCovers}</div>
+                                <div class="covers-stat-label">已缓存封面</div>
+                            </div>
+                            <div class="covers-stat-card">
+                                <div class="covers-stat-value">${stats.totalSizeMB} MB</div>
+                                <div class="covers-stat-label">占用空间</div>
+                            </div>
+                            <div class="covers-stat-card">
+                                <div class="covers-stat-value">${Object.keys(stats.byGame).length}</div>
+                                <div class="covers-stat-label">游戏数量</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // 更新游戏列表
+                    updateCoversGameList(stats.byGame);
+                }
+            } catch (e) {
+                document.getElementById('covers-stats').innerHTML = 
+                    `<div class="empty-state" style="color: #ef4444;">加载失败: ${e.message}</div>`;
+            }
+        }
+        
+        // 更新游戏封面列表
+        async function updateCoversGameList(byGame) {
+            try {
+                // 获取所有游戏信息
+                const res = await fetch(`${API_BASE}/api/games`);
+                const data = await res.json();
+                
+                if (data.success) {
+                    const games = data.games;
+                    let html = '';
+                    
+                    for (const game of games) {
+                        const stats = byGame[game.id] || { count: 0, size: 0 };
+                        const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+                        
+                        html += `
+                            <div class="covers-game-item">
+                                <div class="covers-game-info">
+                                    <div class="game-color" style="background: ${game.color}; width: 6px; height: 30px; border-radius: 3px;"></div>
+                                    <div>
+                                        <div class="covers-game-name">${game.name}</div>
+                                        <div class="covers-game-stats">${stats.count} 张封面 · ${sizeMB} MB</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button class="btn btn-sm btn-primary" onclick="cacheGameCovers('${game.id}')">缓存封面</button>
+                                    <button class="btn btn-sm btn-danger" onclick="clearGameCovers('${game.id}')">清除</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    document.getElementById('covers-games').innerHTML = html || '<div class="empty-state">暂无游戏</div>';
+                }
+            } catch (e) {
+                document.getElementById('covers-games').innerHTML = 
+                    `<div class="empty-state" style="color: #ef4444;">加载失败</div>`;
+            }
+        }
+        
+        // 更新封面配置
+        async function updateCoversConfig() {
+            const enabled = document.getElementById('covers-enabled').checked;
+            const cdnBaseUrl = document.getElementById('cdn-base-url').value.trim();
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/covers/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled, cdnBaseUrl })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast('封面配置已保存');
+                } else {
+                    showToast(data.error || '保存失败', 'error');
+                }
+            } catch (e) {
+                showToast('请求失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 缓存游戏封面
+        async function cacheGameCovers(gameId) {
+            try {
+                showToast(`开始缓存 ${gameId} 封面...`, 'info');
+                
+                const res = await fetch(`${API_BASE}/api/admin/covers/cache/${gameId}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`${gameId}: 已缓存 ${data.stats.cached}/${data.stats.total}，正在下载 ${data.stats.uncached} 张`);
+                    // 稍后刷新状态
+                    setTimeout(loadCoversConfig, 3000);
+                } else {
+                    showToast(data.error || '缓存失败', 'error');
+                }
+            } catch (e) {
+                showToast('请求失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 清除游戏封面
+        async function clearGameCovers(gameId) {
+            if (!confirm(`确定要清除 ${gameId} 的所有封面缓存吗？`)) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/covers/clear`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gameId })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`已清除 ${gameId} 封面缓存`);
+                    loadCoversConfig();
+                } else {
+                    showToast(data.error || '清除失败', 'error');
+                }
+            } catch (e) {
+                showToast('请求失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 清除所有封面
+        async function clearAllCovers() {
+            if (!confirm('确定要清除所有封面缓存吗？这可能需要重新下载大量数据。')) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/covers/clear`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast('已清除所有封面缓存');
+                    loadCoversConfig();
+                } else {
+                    showToast(data.error || '清除失败', 'error');
+                }
+            } catch (e) {
+                showToast('请求失败: ' + e.message, 'error');
+            }
+        }
+
+        // 初始化
+        loadStats();
+        loadLogs();
+        loadSources();
+        loadCache();
+        loadCoversConfig();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,35 @@
+{
+  "sessionId": "mk9wny8s83a98u00qhl",
+  "clientIp": "::ffff:116.147.145.71",
+  "neteaseUid": "491762457",
+  "playlistId": "8885263119",
+  "playlistName": "常",
+  "songCount": 119,
+  "matchResults": {
+    "maimai": {
+      "matchCount": 6
+    },
+    "maimai-jp": {
+      "matchCount": 8
+    },
+    "maimai-cn": {
+      "matchCount": 9
+    },
+    "chunithm": {
+      "matchCount": 8
+    },
+    "chunithm-jp": {
+      "matchCount": 6
+    },
+    "ongeki": {
+      "matchCount": 3
+    },
+    "taiko": {
+      "matchCount": 4
+    }
+  },
+  "startTime": 1768146317596,
+  "endTime": 1768146318102,
+  "duration": 506,
+  "timestamp": "2026-01-11T15:45:18.102Z"
+}

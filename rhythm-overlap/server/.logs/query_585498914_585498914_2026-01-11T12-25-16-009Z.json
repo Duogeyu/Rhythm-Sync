@@ -1,0 +1,35 @@
+{
+  "sessionId": "mk9pip3k58a1hs1zl8e",
+  "clientIp": "::1",
+  "neteaseUid": "585498914",
+  "playlistId": "585498914",
+  "playlistName": "歌单 #585498914",
+  "songCount": 1537,
+  "matchResults": {
+    "chunithm": {
+      "matchCount": 15
+    },
+    "chunithm-jp": {
+      "matchCount": 20
+    },
+    "taiko": {
+      "matchCount": 23
+    },
+    "maimai": {
+      "matchCount": 16
+    },
+    "maimai-jp": {
+      "matchCount": 17
+    },
+    "maimai-cn": {
+      "matchCount": 14
+    },
+    "ongeki": {
+      "matchCount": 4
+    }
+  },
+  "startTime": 1768134315152,
+  "endTime": 1768134316009,
+  "duration": 857,
+  "timestamp": "2026-01-11T12:25:16.010Z"
+}

@@ -1,0 +1,35 @@
+{
+  "sessionId": "mk9n3wo2vwuqavjenz",
+  "clientIp": "::1",
+  "neteaseUid": "text_import",
+  "playlistId": "text_import",
+  "playlistName": "文本导入 (2 首)",
+  "songCount": 2,
+  "matchResults": {
+    "maimai-jp": {
+      "matchCount": 2
+    },
+    "chunithm-jp": {
+      "matchCount": 2
+    },
+    "ongeki": {
+      "matchCount": 2
+    },
+    "taiko": {
+      "matchCount": 2
+    },
+    "maimai": {
+      "matchCount": 1
+    },
+    "maimai-cn": {
+      "matchCount": 1
+    },
+    "chunithm": {
+      "matchCount": 1
+    }
+  },
+  "startTime": 1768130265890,
+  "endTime": 1768130266069,
+  "duration": 179,
+  "timestamp": "2026-01-11T11:17:46.070Z"
+}

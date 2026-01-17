@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "cdnBaseUrl": "",
+  "localBaseUrl": "",
+  "maxConcurrent": 2,
+  "retryCount": 3,
+  "timeout": 30000,
+  "delayBetweenBatches": 500
+}

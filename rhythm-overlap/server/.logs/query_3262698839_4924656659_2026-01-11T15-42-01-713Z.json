@@ -1,0 +1,35 @@
+{
+  "sessionId": "mk9wjqipftw9v5s1p5i",
+  "clientIp": "::ffff:122.193.198.27",
+  "neteaseUid": "3262698839",
+  "playlistId": "4924656659",
+  "playlistName": "柴刀少女蕾娜喜欢的音乐",
+  "songCount": 641,
+  "matchResults": {
+    "ongeki": {
+      "matchCount": 22
+    },
+    "taiko": {
+      "matchCount": 16
+    },
+    "chunithm": {
+      "matchCount": 34
+    },
+    "chunithm-jp": {
+      "matchCount": 35
+    },
+    "maimai": {
+      "matchCount": 37
+    },
+    "maimai-jp": {
+      "matchCount": 37
+    },
+    "maimai-cn": {
+      "matchCount": 37
+    }
+  },
+  "startTime": 1768146120961,
+  "endTime": 1768146121713,
+  "duration": 752,
+  "timestamp": "2026-01-11T15:42:01.713Z"
+}

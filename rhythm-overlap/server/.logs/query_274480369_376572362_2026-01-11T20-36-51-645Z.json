@@ -1,0 +1,35 @@
+{
+  "sessionId": "mka72vvlvtgiszd0xg",
+  "clientIp": "::ffff:101.87.98.60",
+  "neteaseUid": "274480369",
+  "playlistId": "376572362",
+  "playlistName": "dwilliam喜欢的音乐",
+  "songCount": 938,
+  "matchResults": {
+    "maimai": {
+      "matchCount": 37
+    },
+    "maimai-jp": {
+      "matchCount": 41
+    },
+    "maimai-cn": {
+      "matchCount": 40
+    },
+    "chunithm": {
+      "matchCount": 39
+    },
+    "chunithm-jp": {
+      "matchCount": 38
+    },
+    "ongeki": {
+      "matchCount": 25
+    },
+    "taiko": {
+      "matchCount": 24
+    }
+  },
+  "startTime": 1768163810529,
+  "endTime": 1768163811645,
+  "duration": 1116,
+  "timestamp": "2026-01-11T20:36:51.645Z"
+}

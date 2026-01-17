@@ -1,0 +1,42 @@
+{
+    "maimai": {
+        "enabled": true,
+        "sources": [
+            "https://www.diving-fish.com/api/maimaidxprober/music_data",
+            "https://maimai.sega.jp/data/maimai_songs.json"
+        ],
+        "_comment": "国际服日服数据，diving-fish 优先，SEGA 官方备选"
+    },
+    "maimai-cn": {
+        "enabled": true,
+        "sources": [
+            "https://cdn.jsdelivr.net/gh/CrazyKidCN/maimaiDX-CN-songs-database@main/maidata.json",
+            "https://raw.githubusercontent.com/CrazyKidCN/maimaiDX-CN-songs-database/main/maidata.json"
+        ],
+        "_comment": "国服数据来自 CrazyKidCN/maimaiDX-CN-songs-database"
+    },
+    "chunithm": {
+        "enabled": true,
+        "sources": [
+            "https://www.diving-fish.com/api/chunithmprober/music_data",
+            "https://chunithm.sega.jp/storage/json/music.json"
+        ],
+        "_comment": "CHUNITHM 数据，diving-fish 优先，SEGA 官方备选"
+    },
+    "ongeki": {
+        "enabled": true,
+        "sources": [
+            "https://ongeki.sega.jp/assets/data/music.json",
+            "https://reiwa.f5.si/ongeki_all.json"
+        ],
+        "_comment": "ONGEKI 官方数据优先"
+    },
+    "taiko": {
+        "enabled": true,
+        "sources": [
+            "https://cdn.jsdelivr.net/gh/taikowiki/taiko-song-database@main/database.json",
+            "https://raw.githubusercontent.com/taikowiki/taiko-song-database/main/database.json"
+        ],
+        "_comment": "太鼓达人数据来自 taikowiki"
+    }
+}
