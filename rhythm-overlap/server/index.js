@@ -3143,7 +3143,7 @@ app.get('/api/check', async (req, res) => {
         const matches = {};
         let foundInGames = 0;
         
-        for (const [gameId, config] of Object.entries(GAME_CONFIG)) {
+        const checkPromises = Object.entries(GAME_CONFIG).map(async ([gameId, config]) => {
             try {
                 const songs = await fetchGameSongs(gameId);
                 
@@ -3178,25 +3178,37 @@ app.get('/api/check', async (req, res) => {
                 }
                 
                 if (match) {
-                    matches[gameId] = {
-                        gameName: config.name,
-                        found: true,
-                        song: {
-                            id: match.id,
-                            title: match.title,
-                            artist: match.artist,
-                            category: match.category,
-                            coverUrl: match.coverUrl,
-                            charts: match.charts || [],
-                            levels: match.levels || []
+                    return {
+                        gameId,
+                        data: {
+                            gameName: config.name,
+                            found: true,
+                            song: {
+                                id: match.id,
+                                title: match.title,
+                                artist: match.artist,
+                                category: match.category,
+                                coverUrl: match.coverUrl,
+                                charts: match.charts || [],
+                                levels: match.levels || []
+                            }
                         }
                     };
-                    foundInGames++;
                 }
             } catch (e) {
                 console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
             }
-        }
+            return null;
+        });
+
+        const results = await Promise.all(checkPromises);
+
+        results.forEach(result => {
+            if (result) {
+                matches[result.gameId] = result.data;
+                foundInGames++;
+            }
+        });
         
         res.json({
             success: true,
