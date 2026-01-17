@@ -2766,15 +2766,16 @@ app.get('/api/random', async (req, res) => {
         }
         
         // 获取歌曲
-        let allSongs = [];
-        for (const gameId of targetGames) {
+        const songsResults = await Promise.all(targetGames.map(async (gameId) => {
             try {
-                const songs = await fetchGameSongs(gameId);
-                allSongs = allSongs.concat(songs);
+                return await fetchGameSongs(gameId);
             } catch (e) {
                 console.warn(`[随机] 获取 ${gameId} 失败: ${e.message}`);
+                return [];
             }
-        }
+        }));
+
+        let allSongs = songsResults.flat();
         
         if (allSongs.length === 0) {
             return res.status(500).json({ success: false, error: '无法获取歌曲数据' });
