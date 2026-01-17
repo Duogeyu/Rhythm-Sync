@@ -352,6 +352,7 @@ async function saveQueryLog(logData) {
 
 // ============== 缓存配置 ==============
 const CACHE_DIR = path.join(__dirname, '.cache');
+const IN_MEMORY_SONG_CACHE = new Map(); // gameId -> { timestamp, songs, titleMap, fuse }
 const COVERS_DIR = path.join(__dirname, '.covers');
 const CONFIG_FILE = path.join(__dirname, 'config', 'active-sources.json');
 const COVERS_CONFIG_FILE = path.join(__dirname, 'config', 'covers.json');
@@ -646,13 +647,27 @@ function getCacheFilePath(gameId) {
 }
 
 function readCache(gameId) {
+    // 1. Check in-memory
+    if (IN_MEMORY_SONG_CACHE.has(gameId)) {
+        const cached = IN_MEMORY_SONG_CACHE.get(gameId);
+        if (Date.now() - cached.timestamp < CACHE_DURATION) {
+             console.log(`[缓存] ${gameId} 命中内存缓存 (${cached.songs.length}首)`);
+             return cached.songs;
+        }
+    }
+
     const filePath = getCacheFilePath(gameId);
     if (!fs.existsSync(filePath)) return null;
 
     try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         if (Date.now() - data.timestamp < CACHE_DURATION) {
-            console.log(`[缓存] ${gameId} 命中缓存 (${data.songs.length}首)`);
+            console.log(`[缓存] ${gameId} 命中磁盘缓存 (${data.songs.length}首)`);
+            // Update in-memory cache
+            IN_MEMORY_SONG_CACHE.set(gameId, {
+                timestamp: data.timestamp,
+                songs: data.songs
+            });
             return data.songs;
         }
         console.log(`[缓存] ${gameId} 缓存过期`);
@@ -663,11 +678,19 @@ function readCache(gameId) {
 }
 
 function writeCache(gameId, songs) {
+    const timestamp = Date.now();
     const filePath = getCacheFilePath(gameId);
     fs.writeFileSync(filePath, JSON.stringify({
-        timestamp: Date.now(),
+        timestamp,
         songs
     }));
+
+    // Update in-memory cache
+    IN_MEMORY_SONG_CACHE.set(gameId, {
+        timestamp,
+        songs
+    });
+
     console.log(`[缓存] ${gameId} 已写入缓存 (${songs.length}首)`);
 }
 
@@ -3511,17 +3534,38 @@ app.post('/api/bot/query', async (req, res) => {
                 const gameSongs = await fetchGameSongs(gameId);
                 
                 // 建立索引
-                const titleMap = new Map();
-                gameSongs.forEach(s => {
-                    titleMap.set(normalizeTitle(s.title), s);
-                    titleMap.set(s.title, s);
-                });
+                let titleMap, fuse;
                 
-                const fuse = new Fuse(gameSongs, {
-                    keys: ['title', 'artist'],
-                    threshold: 0.3,
-                    includeScore: true
-                });
+                // 尝试使用缓存的索引
+                const cachedEntry = IN_MEMORY_SONG_CACHE.get(gameId);
+
+                // 只有当内存缓存中的 songs 对象与当前的 gameSongs 对象相同时，才复用索引
+                // 因为 readCache 已经确保了如果我们命中内存缓存，或者刚从磁盘读取并更新了内存缓存，
+                // fetchGameSongs 返回的 gameSongs 就是内存缓存中的那个对象。
+                if (cachedEntry && cachedEntry.songs === gameSongs && cachedEntry.fuse) {
+                    titleMap = cachedEntry.titleMap;
+                    fuse = cachedEntry.fuse;
+                    // console.log(`[索引] ${gameId} 复用缓存索引`);
+                } else {
+                    titleMap = new Map();
+                    gameSongs.forEach(s => {
+                        titleMap.set(normalizeTitle(s.title), s);
+                        titleMap.set(s.title, s);
+                    });
+
+                    fuse = new Fuse(gameSongs, {
+                        keys: ['title', 'artist'],
+                        threshold: 0.3,
+                        includeScore: true
+                    });
+
+                    // 如果存在对应的缓存条目（说明 songs 对象一致），则保存索引以供复用
+                    if (cachedEntry && cachedEntry.songs === gameSongs) {
+                        cachedEntry.titleMap = titleMap;
+                        cachedEntry.fuse = fuse;
+                        console.log(`[索引] ${gameId} 建立并缓存新索引`);
+                    }
+                }
                 
                 const matches = [];
                 
