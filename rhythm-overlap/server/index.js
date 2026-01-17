@@ -313,7 +313,7 @@ app.use((req, res, next) => {
 });
 
 // 保存查询日志
-function saveQueryLog(logData) {
+async function saveQueryLog(logData) {
     const { sessionId, clientIp, neteaseUid, playlistId, playlistName, songCount, matchResults, startTime, endTime } = logData;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -339,8 +339,12 @@ function saveQueryLog(logData) {
         timestamp: new Date().toISOString()
     };
 
-    fs.writeFileSync(filepath, JSON.stringify(logEntry, null, 2), 'utf-8');
-    console.log(`[LOG] 查询日志已保存: ${filename}`);
+    try {
+        await fs.promises.writeFile(filepath, JSON.stringify(logEntry, null, 2), 'utf-8');
+        console.log(`[LOG] 查询日志已保存: ${filename}`);
+    } catch (error) {
+        console.error(`[LOG] 保存日志失败: ${error.message}`);
+    }
 
     return filename;
 }
@@ -2267,6 +2271,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
 
         // 保存查询日志
         const endTime = Date.now();
+        // 异步保存日志，不阻塞响应
         saveQueryLog({
             sessionId,
             clientIp,
@@ -2277,7 +2282,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
             matchResults: matchResultsForLog,
             startTime,
             endTime
-        });
+        }).catch(err => console.error('Log save error:', err));
 
         sendEvent('done', {});
         res.end();
