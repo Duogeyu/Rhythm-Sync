@@ -1624,7 +1624,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                 }
             });
             
-            fs.writeFileSync(localPath, response.data);
+            await fs.promises.writeFile(localPath, response.data);
             return localPath;
         } catch (e) {
             if (i === coversConfig.retryCount - 1) {
@@ -1736,7 +1736,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         });
         
         // 保存到本地
-        fs.writeFileSync(filePath, response.data);
+        await fs.promises.writeFile(filePath, response.data);
         console.log(`[封面] 缓存成功 ${gameId}: ${fileName}`);
         
         // 返回图片
