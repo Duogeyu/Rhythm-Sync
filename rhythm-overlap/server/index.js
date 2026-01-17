@@ -37,11 +37,12 @@ function sanitizeInput(input) {
     return sanitized.trim();
 }
 
+const URL_PATTERN = /https?:\/\/[^\s<>"'()（）\[\]【】]+/gi;
+
 // 从混合文本中提取 URL
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
-    const urlPattern = /https?:\/\/[^\s<>"'()（）\[\]【】]+/gi;
-    const matches = text.match(urlPattern);
+    const matches = text.match(URL_PATTERN);
     return matches ? matches[0] : null;
 }
 
