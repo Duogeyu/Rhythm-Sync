@@ -5,6 +5,8 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
+const { Worker } = require('worker_threads');
+const { normalizeTitle } = require('./utils');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -2314,18 +2316,6 @@ app.post('/api/match-all', async (req, res) => {
 
         const gameDataResults = await Promise.all(gameDataPromises);
 
-        // 辅助函数：标准化标题用于精确匹配
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '') // 去除空格
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
-
         // 对每个游戏进行匹配（并行处理）
         const matchPromises = gameDataResults.map(async ({ gameId, songs, error }) => {
             if (error) {
@@ -2339,67 +2329,50 @@ app.post('/api/match-all', async (req, res) => {
                 };
             }
 
-            // 1. 建立精确匹配索引 (Map)
-            const titleMap = new Map();
-            songs.forEach(s => {
-                titleMap.set(normalizeTitle(s.title), s);
-                // 尝试保留原始标题作为 key 备用
-                titleMap.set(s.title, s);
-            });
+            // 使用 Worker Thread 进行匹配
+            return new Promise((resolve, reject) => {
+                const worker = new Worker(path.join(__dirname, 'match_worker.js'), {
+                    workerData: {
+                        songs,
+                        userSongs,
+                        gameId,
+                        config: GAME_CONFIG[gameId]
+                    }
+                });
 
-            // 2. 建立 Fuse.js 模糊匹配索引
-            const fuse = new Fuse(songs, {
-                keys: ['title', 'artist'],
-                threshold: 0.3,
-                includeScore: true
-            });
+                worker.on('message', (message) => {
+                    if (message.success) {
+                        resolve(message.result);
+                    } else {
+                        resolve({
+                            [gameId]: {
+                                error: message.error,
+                                config: GAME_CONFIG[gameId],
+                                stats: null,
+                                matches: []
+                            }
+                        });
+                    }
+                });
 
-            const matches = [];
-            const matchedUserSongIds = new Set();
-
-            for (const userSong of userSongs) {
-                // 优化：先尝试精确匹配
-                const normalizedParams = normalizeTitle(userSong.name);
-
-                if (titleMap.has(normalizedParams)) {
-                    matches.push({
-                        userSong,
-                        arcadeSong: titleMap.get(normalizedParams),
-                        score: 1.0,
-                        matchType: 'exact'
+                worker.on('error', (err) => {
+                    console.error(`Worker error for ${gameId}:`, err);
+                    resolve({
+                        [gameId]: {
+                            error: err.message,
+                            config: GAME_CONFIG[gameId],
+                            stats: null,
+                            matches: []
+                        }
                     });
-                    matchedUserSongIds.add(userSong.id);
-                    continue; // 命中精确匹配，跳过 Fuse
-                }
+                });
 
-                // 未命中，使用 Fuse 模糊匹配
-                const fuseResults = fuse.search(userSong.name);
-
-                if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-                    matches.push({
-                        userSong,
-                        arcadeSong: fuseResults[0].item,
-                        score: 1 - fuseResults[0].score,
-                        matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-                    });
-                    matchedUserSongIds.add(userSong.id);
-                }
-            }
-
-            const stats = {
-                totalUserSongs: userSongs.length,
-                totalArcadeSongs: songs.length,
-                matchedCount: matches.length,
-                overlapPercentage: Math.round((matches.length / userSongs.length) * 100)
-            };
-
-            return {
-                [gameId]: {
-                    config: GAME_CONFIG[gameId],
-                    stats,
-                    matches: matches.sort((a, b) => b.score - a.score)
-                }
-            };
+                worker.on('exit', (code) => {
+                    if (code !== 0) {
+                        console.error(`Worker stopped with exit code ${code}`);
+                    }
+                });
+            });
         });
 
         const matchResults = await Promise.all(matchPromises);
