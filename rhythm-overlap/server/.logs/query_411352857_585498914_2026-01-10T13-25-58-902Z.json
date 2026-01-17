@@ -1,0 +1,20 @@
+{
+  "sessionId": "mk8c7toykgvgqui3vuh",
+  "clientIp": "::1",
+  "neteaseUid": "411352857",
+  "playlistId": "585498914",
+  "playlistName": "多个与喜欢的音乐",
+  "songCount": 1537,
+  "matchResults": {
+    "maimai": {
+      "matchCount": 215
+    },
+    "chunithm": {
+      "matchCount": 248
+    }
+  },
+  "startTime": 1768051506706,
+  "endTime": 1768051558901,
+  "duration": 52195,
+  "timestamp": "2026-01-10T13:25:58.902Z"
+}

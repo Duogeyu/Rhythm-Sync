@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import {
   Music,
   ChevronRight,
@@ -14,20 +15,105 @@ import {
   Filter,
   ArrowUpDown,
   SlidersHorizontal,
-  Check
+  Check,
+  Globe
 } from 'lucide-react';
 import { getUserPlaylists, getPlaylistSongs, startMatchStream, getMatchStreamUrl, getSongUrl, type MatchItem, type UserPlaylist, type GameMatchResult } from './services/api';
 
+// --- 语言切换组件 ---
+function LanguageSwitcher() {
+  const { i18n, t } = useTranslation();
+  const [isOpen, setIsOpen] = useState(false);
+
+  const switchLanguage = (lang: string) => {
+    i18n.changeLanguage(lang);
+    localStorage.setItem('language', lang);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative z-[300]">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white/80 hover:text-white transition-all text-sm"
+      >
+        <Globe className="w-4 h-4" />
+        <span>{t(`language.${i18n.language}`)}</span>
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* 点击外部关闭 */}
+            <div
+              className="fixed inset-0 z-[299]"
+              onClick={() => setIsOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="absolute right-0 mt-2 py-1 bg-slate-800 rounded-lg shadow-xl border border-white/10 overflow-hidden z-[300] min-w-[120px]"
+            >
+              {['zh-CN', 'en-US'].map(lang => (
+                <button
+                  key={lang}
+                  onClick={() => switchLanguage(lang)}
+                  className={`w-full px-4 py-2 text-left text-sm hover:bg-white/10 transition-colors flex items-center justify-between ${i18n.language === lang ? 'text-cyan-400' : 'text-white/80'
+                    }`}
+                >
+                  {t(`language.${lang}`)}
+                  {i18n.language === lang && <Check className="w-4 h-4" />}
+                </button>
+              ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // --- CONFIG & THEME ---
 const GAMES = [
-  { id: 'maimai', name: 'maimai DX (国际)', color: 'from-[#FFD700] to-[#FFA500]', ringColor: '#FFD700', icon: 'M' },
-  { id: 'maimai-cn', name: 'maimai DX (国服)', color: 'from-[#FF8C00] to-[#FF6347]', ringColor: '#FF8C00', icon: 'M' },
-  { id: 'chunithm', name: 'CHUNITHM', color: 'from-[#00CED1] to-[#20B2AA]', ringColor: '#00CED1', icon: 'C' },
-  { id: 'ongeki', name: 'ONGEKI', color: 'from-[#9932CC] to-[#8B008B]', ringColor: '#9932CC', icon: 'O' },
-  { id: 'taiko', name: '太鼓の達人', color: 'from-[#FF6347] to-[#DC143C]', ringColor: '#FF6347', icon: 'T' },
+  {
+    id: 'maimai',
+    name: 'maimai DX (国际)',
+    color: 'from-blue-400 to-cyan-400',
+    ringColor: '#22d3ee',
+    logoUrl: 'https://maimai.sega.jp/storage/root/logo.png'
+  },
+  {
+    id: 'maimai-cn',
+    name: 'maimai DX (国服)',
+    color: 'from-orange-400 to-red-400',
+    ringColor: '#fb923c',
+    logoUrl: 'https://maimai.sega.jp/storage/root/logo.png' // 使用国际版 Logo（样式相同）
+  },
+  {
+    id: 'chunithm',
+    name: 'CHUNITHM',
+    color: 'from-yellow-400 to-yellow-600',
+    ringColor: '#facc15',
+    logoUrl: 'https://chunithm.sega.jp/storage/top/pc/top_main_logo.webp'
+  },
+  {
+    id: 'ongeki',
+    name: 'ONGEKI',
+    color: 'from-pink-400 to-purple-500',
+    ringColor: '#e879f9',
+    logoUrl: 'https://ongeki.sega.jp/assets/img/common/logo_main.webp'
+  },
+  {
+    id: 'taiko',
+    name: '太鼓の達人',
+    color: 'from-red-500 to-red-700',
+    ringColor: '#ef4444',
+    logoUrl: 'https://taiko.namco-ch.net/taiko/tc/images/common/logo_nijiiro.png'
+  },
 ];
 
-// --- ANIMATION ---
+// ... (保持动画配置不变)
 // Apple-style non-linear animation settings
 // "iOS" ease - distinct ease-out
 const iosEase = [0.36, 0.66, 0.04, 1];
@@ -73,6 +159,7 @@ interface InputStepProps {
 
 const InputStep: React.FC<InputStepProps> = ({ onSearch, isLoading }) => {
   const [input, setInput] = useState('');
+  const { t } = useTranslation();
 
   return (
     <motion.div
@@ -84,14 +171,14 @@ const InputStep: React.FC<InputStepProps> = ({ onSearch, isLoading }) => {
     >
       <div className="relative mb-12 group">
         <div className="absolute inset-0 bg-cyan-400 rounded-full blur-3xl opacity-30 group-hover:opacity-60 transition-opacity duration-700" />
-        <motion.div 
+        <motion.div
           className="relative z-10 w-44 h-44 bg-white/90 backdrop-blur-xl border-[6px] border-cyan-400 rounded-full flex items-center justify-center shadow-2xl shadow-cyan-400/30"
           whileHover={{ scale: 1.05, rotate: 5 }}
           transition={appleSpring}
         >
           <div className="absolute inset-2 border-4 border-dashed border-slate-200 rounded-full animate-spin-slow" />
           <Music size={72} className="text-cyan-500 transform -rotate-12" />
-          <motion.div 
+          <motion.div
             className="absolute -bottom-3 bg-yellow-400 text-slate-900 text-sm font-black px-4 py-1.5 rounded-full border-4 border-white shadow-lg uppercase tracking-wider transform -rotate-3"
             animate={{ scale: [1, 1.1, 1] }}
             transition={{ duration: 2, repeat: Infinity }}
@@ -102,10 +189,10 @@ const InputStep: React.FC<InputStepProps> = ({ onSearch, isLoading }) => {
       </div>
 
       <h1 className="text-4xl font-black text-slate-800 mb-2 italic tracking-tighter drop-shadow-sm">
-        音游歌单<span className="text-cyan-500">同步</span>
+        {t('app.titleMain')}<span className="text-cyan-500">{t('app.titleAccent')}</span>
       </h1>
       <p className="text-slate-500 font-bold mb-8 uppercase tracking-widest text-xs">
-        Rhythm Game Playlist Sync
+        {t('app.subtitle')}
       </p>
 
       <div className="w-full max-w-sm relative">
@@ -115,7 +202,7 @@ const InputStep: React.FC<InputStepProps> = ({ onSearch, isLoading }) => {
             type="number"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="输入网易云 UID..."
+            placeholder={t('input.placeholder')}
             className="flex-1 px-6 py-4 text-xl font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:bg-cyan-50 transition-colors"
             onKeyDown={(e) => e.key === 'Enter' && input && !isLoading && onSearch(input)}
           />
@@ -150,6 +237,8 @@ interface PlaylistStepProps {
 }
 
 const PlaylistStep: React.FC<PlaylistStepProps> = ({ playlists, onSelect, onBack, isLoading }) => {
+  const { t } = useTranslation();
+
   return (
     <motion.div
       className="w-full max-w-4xl mx-auto px-4 pt-4 pb-20 relative z-10"
@@ -163,7 +252,7 @@ const PlaylistStep: React.FC<PlaylistStepProps> = ({ playlists, onSelect, onBack
           <ArrowLeft size={24} strokeWidth={3} />
         </button>
         <div>
-          <h2 className="text-3xl font-black text-slate-800 italic uppercase">选择歌单</h2>
+          <h2 className="text-3xl font-black text-slate-800 italic uppercase">{t('playlist.title')}</h2>
           <div className="h-1.5 w-20 bg-gradient-to-r from-cyan-400 to-transparent mt-1 rounded-full" />
         </div>
       </div>
@@ -172,7 +261,7 @@ const PlaylistStep: React.FC<PlaylistStepProps> = ({ playlists, onSelect, onBack
         <div className="flex justify-center py-12">
           <div className="flex flex-col items-center">
             <div className="w-12 h-12 border-[6px] border-slate-200 border-t-cyan-500 rounded-full animate-spin mb-4" />
-            <p className="text-slate-400 font-bold">读取中...</p>
+            <p className="text-slate-400 font-bold">{t('common.loading')}</p>
           </div>
         </div>
       )}
@@ -198,10 +287,7 @@ const PlaylistStep: React.FC<PlaylistStepProps> = ({ playlists, onSelect, onBack
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-lg text-slate-800 truncate group-hover:text-cyan-600 transition-colors">{playlist.name}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <div className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-                    Created by
-                  </div>
-                  <span className="text-xs font-bold text-slate-400 truncate">{playlist.creator}</span>
+                  <span className="text-xs font-bold text-slate-400">{playlist.trackCount} {t('playlist.songs')}</span>
                 </div>
               </div>
 
@@ -286,15 +372,15 @@ interface MatchCardProps {
   onClick: (match: MatchItem) => void;
 }
 
-// 难度颜色配置
+// 难度颜色配置（对应 Maimai DX 颜色）
 const DIFFICULTY_COLORS: Record<string, string> = {
   'Basic': 'bg-green-500',
   'Advanced': 'bg-yellow-500',
   'Expert': 'bg-red-500',
   'Master': 'bg-purple-500',
-  'Re:Master': 'bg-fuchsia-400',
+  'Re:Master': 'bg-fuchsia-400', // 白/粉
   'Ultima': 'bg-black',
-  'Lunatic': 'bg-pink-500',
+  'Lunatic': 'bg-pink-500', // Ongeki Lunatic
   'かんたん': 'bg-red-400',
   'ふつう': 'bg-yellow-500',
   'むずかしい': 'bg-green-500',
@@ -302,28 +388,29 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   '裏おに': 'bg-purple-600',
 };
 
-const getDifficultyColor = (diff: string): string => {
-  return DIFFICULTY_COLORS[diff] || 'bg-slate-500';
+const getDifficultyBg = (diff: string): string => {
+  return DIFFICULTY_COLORS[diff] || 'bg-slate-400';
 };
 
 const MatchCard: React.FC<MatchCardProps> = ({ match, onClick }) => {
   // 防止无效数据导致渲染崩溃
-  if (!match || !match.arcadeSong || !match.userSong) {
-    console.error('Invalid match data:', match);
-    return null;
-  }
+  if (!match || !match.arcadeSong || !match.userSong) return null;
 
   const isExact = match.matchType === 'exact';
 
-  // 安全获取所有可能是对象的字段
+  // 提取数据
   const category = safeString(match.arcadeSong.category, 'UNKNOWN');
   const title = safeString(match.arcadeSong.title, 'Unknown Title');
   const artist = safeString(match.arcadeSong.artist, 'Unknown Artist');
-  const version = safeString(match.arcadeSong.version, 'Ver.UNKNOWN');
+  const version = safeString(match.arcadeSong.version, '');
   const bpm = formatBpm(match.arcadeSong.bpm);
-  const songType = match.arcadeSong.type || '';
   const charts = match.arcadeSong.charts || [];
   const levels = match.arcadeSong.levels || [];
+
+  // 获取最高难度用于展示
+  const maxLevel = charts.length > 0
+    ? charts[charts.length - 1].level
+    : levels.length > 0 ? levels[levels.length - 1] : '?';
 
   return (
     <motion.div
@@ -331,43 +418,23 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onClick }) => {
       layoutId={`card-${match.userSong.id}`}
       onClick={() => onClick(match)}
       className="group relative cursor-pointer"
-      whileHover={{ scale: 1.02, y: -2 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={{ scale: 1.01, y: -2 }}
+      whileTap={{ scale: 0.99 }}
       transition={appleSpring}
     >
-      {/* Shadow/Depth Layer */}
-      <div className="absolute inset-0 bg-slate-800/20 rounded-2xl transform translate-x-2 translate-y-2 blur-sm" />
+      {/* 底部阴影 */}
+      <div className="absolute inset-0 bg-slate-800/10 rounded-xl transform translate-y-1 blur-sm" />
 
       <div className={`
-        relative bg-white rounded-2xl overflow-hidden border-[3px] 
-        ${isExact ? 'border-pink-400 shadow-[0_0_15px_rgba(244,114,182,0.4)]' : 'border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]'} 
-        transition-all duration-300
+        relative bg-white rounded-xl overflow-hidden border-l-4 shadow-sm hover:shadow-md transition-all
+        ${isExact ? 'border-l-pink-500' : 'border-l-yellow-400'}
       `}>
-        {/* Header Bar */}
-        <div className={`h-8 px-3 flex items-center justify-between relative overflow-hidden ${isExact ? 'bg-pink-500' : 'bg-yellow-400'}`}>
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12 translate-x-[-100%] group-hover:animate-shine" />
-          <div className="flex items-center gap-2 relative z-10">
-            <span className="text-white text-[10px] font-black uppercase tracking-wider drop-shadow-sm">
-              {category}
-            </span>
-            {songType && (
-              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${songType === 'DX' ? 'bg-orange-400' : 'bg-blue-400'} text-white`}>
-                {songType}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 relative z-10">
-            {isExact && <Star size={12} fill="white" className="text-white drop-shadow-sm" />}
-            <span className="text-white text-[10px] font-black drop-shadow-sm">{isExact ? 'PERFECT' : 'POSSIBLE'}</span>
-          </div>
-        </div>
-
-        <div className="p-3 flex items-center gap-3 bg-gradient-to-br from-white to-slate-50">
-          <div className="relative w-16 h-16 rounded-xl overflow-hidden shadow-md flex-shrink-0 bg-slate-200 group-hover:shadow-lg transition-shadow">
-            {/* 网易云封面（主封面） */}
-            <img 
-              src={match.userSong.coverUrl} 
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+        <div className="flex h-24">
+          {/* 左侧：封面区 */}
+          <div className="relative w-24 h-24 flex-shrink-0">
+            <img
+              src={match.userSong.coverUrl}
+              className="w-full h-full object-cover"
               onError={(e) => {
                 const target = e.currentTarget;
                 if (target.src !== match.arcadeSong.coverUrl && match.arcadeSong.coverUrl) {
@@ -375,75 +442,66 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onClick }) => {
                 }
               }}
             />
-            {/* 游戏封面（右下角小图） */}
+            {/* 游戏封面小图 */}
             {match.arcadeSong.coverUrl && (
-              <div className="absolute bottom-0 right-0 w-7 h-7 rounded-tl-lg overflow-hidden border-t-2 border-l-2 border-white shadow-lg bg-slate-300 z-10">
-                <img 
+              <div className="absolute bottom-0 right-0 w-8 h-8 shadow-lg z-10">
+                <img
                   src={match.arcadeSong.coverUrl}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover border-t border-l border-white/50"
                   onError={(e) => e.currentTarget.style.display = 'none'}
                 />
               </div>
             )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <h4 className="font-black text-slate-800 truncate text-sm leading-tight group-hover:text-cyan-600 transition-colors">{title}</h4>
-            <p className="text-[11px] font-bold text-slate-400 truncate mt-0.5">{artist}</p>
-
-            {/* 难度指示器 */}
-            {(charts.length > 0 || levels.length > 0) && (
-              <div className="flex items-center gap-1 mt-1.5">
-                {charts.length > 0 ? (
-                  charts.slice(0, 5).map((chart: any, i: number) => (
-                    <div 
-                      key={i} 
-                      className={`w-6 h-5 rounded text-[9px] font-black text-white flex items-center justify-center ${getDifficultyColor(chart.difficulty)}`}
-                      title={`${chart.difficulty}: ${chart.level} (${chart.ds})`}
-                    >
-                      {chart.level}
-                    </div>
-                  ))
-                ) : (
-                  levels.slice(0, 5).map((lv: string, i: number) => (
-                    <div 
-                      key={i} 
-                      className={`w-6 h-5 rounded text-[9px] font-black text-white flex items-center justify-center ${
-                        ['bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-purple-500', 'bg-fuchsia-400'][i] || 'bg-slate-500'
-                      }`}
-                    >
-                      {lv}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-              <span className="px-1.5 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500">
-                {version}
-              </span>
-              {bpm !== '-' && (
-                <span className="px-1.5 py-0.5 bg-cyan-50 rounded text-[9px] font-black text-cyan-600">
-                  ♪{bpm}
-                </span>
-              )}
+            {/* 匹配度徽章 */}
+            <div className={`absolute top-0 left-0 px-1.5 py-0.5 text-[9px] font-black text-white ${isExact ? 'bg-pink-500' : 'bg-yellow-500'}`}>
+              {((match.score || 0) * 100).toFixed(0)}%
             </div>
           </div>
 
-          <div className="flex flex-col items-center justify-center w-10 flex-shrink-0">
-            <div className="relative w-10 h-10 flex items-center justify-center">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle cx="20" cy="20" r="16" stroke="#e2e8f0" strokeWidth="3" fill="transparent" />
-                <circle cx="20" cy="20" r="16" stroke={isExact ? '#ec4899' : '#facc15'} strokeWidth="3" fill="transparent"
-                  strokeDasharray={100} strokeDashoffset={100 - ((match.score || 0) * 100)}
-                  strokeLinecap="round"
-                  className="drop-shadow-sm transition-all duration-1000 ease-out"
-                />
-              </svg>
-              <span className={`absolute text-[9px] font-black ${isExact ? 'text-pink-500' : 'text-yellow-500'}`}>
-                {((match.score || 0) * 100).toFixed(0)}
-              </span>
+          {/* 中间：信息区 */}
+          <div className="flex-1 min-w-0 p-3 flex flex-col justify-between relative overflow-hidden">
+            {/* 背景装饰字 */}
+            <div className="absolute -right-4 -bottom-4 text-[4rem] font-black text-slate-50 opacity-50 pointer-events-none select-none z-0">
+              {category.split('&')[0]}
+            </div>
+
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 uppercase tracking-tight truncate max-w-[120px]">
+                  {category}
+                </span>
+                {version && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-600 truncate max-w-[100px]">
+                    {version}
+                  </span>
+                )}
+              </div>
+              <h4 className="font-black text-slate-800 text-sm leading-tight line-clamp-1 group-hover:text-cyan-600 transition-colors" title={title}>
+                {title}
+              </h4>
+              <p className="text-[10px] font-bold text-slate-400 line-clamp-1 mt-0.5" title={artist}>
+                {artist}
+              </p>
+            </div>
+
+            {/* 难度条展示 - 更像游戏选歌条 */}
+            <div className="flex items-end gap-1 relative z-10 mt-1">
+              {(charts.length > 0 ? charts : levels.map((l, i) => ({ level: l, difficulty: Object.keys(DIFFICULTY_COLORS)[i] }))).slice(0, 5).map((c: any, i: number) => (
+                <div
+                  key={i}
+                  className={`
+                    h-4 min-w-[20px] px-1 rounded-sm flex items-center justify-center text-[9px] font-black text-white shadow-sm
+                    ${getDifficultyBg(c.difficulty)}
+                  `}
+                >
+                  {c.level}
+                </div>
+              ))}
+              {bpm !== '-' && (
+                <div className="ml-auto text-[9px] font-black text-slate-300">
+                  BPM {bpm}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -464,21 +522,23 @@ interface ResultStepProps {
 type SortOption = 'score-desc' | 'score-asc' | 'title-asc' | 'title-desc' | 'artist-asc';
 type FilterOption = 'all' | 'exact' | 'fuzzy';
 
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'score-desc', label: '分数 (高→低)' },
-  { value: 'score-asc', label: '分数 (低→高)' },
-  { value: 'title-asc', label: '曲名 (A→Z)' },
-  { value: 'title-desc', label: '曲名 (Z→A)' },
-  { value: 'artist-asc', label: '艺术家 (A→Z)' },
+// SORT_OPTIONS 和 FILTER_OPTIONS 在组件内使用 t() 动态生成
+const SORT_OPTION_KEYS: { value: SortOption; labelKey: string }[] = [
+  { value: 'score-desc', labelKey: 'result.sort.scoreDesc' },
+  { value: 'score-asc', labelKey: 'result.sort.scoreAsc' },
+  { value: 'title-asc', labelKey: 'result.sort.titleAsc' },
+  { value: 'title-desc', labelKey: 'result.sort.titleDesc' },
+  { value: 'artist-asc', labelKey: 'result.sort.artistAsc' },
 ];
 
-const FILTER_OPTIONS: { value: FilterOption; label: string; color: string }[] = [
-  { value: 'all', label: '全部', color: 'bg-slate-500' },
-  { value: 'exact', label: '精确匹配', color: 'bg-pink-500' },
-  { value: 'fuzzy', label: '模糊匹配', color: 'bg-yellow-500' },
+const FILTER_OPTION_KEYS: { value: FilterOption; labelKey: string; color: string }[] = [
+  { value: 'all', labelKey: 'result.filter.all', color: 'bg-slate-500' },
+  { value: 'exact', labelKey: 'result.filter.exact', color: 'bg-pink-500' },
+  { value: 'fuzzy', labelKey: 'result.filter.fuzzy', color: 'bg-yellow-500' },
 ];
 
 const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, onBack, onSelectSong }) => {
+  const { t } = useTranslation();
   const [activeGameId, setActiveGameId] = useState('maimai');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('score-desc');
@@ -501,8 +561,8 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
         const artist = (m.arcadeSong?.artist || '').toLowerCase();
         const userTitle = (m.userSong?.name || '').toLowerCase();
         const userArtist = (m.userSong?.artists || '').toLowerCase();
-        return title.includes(query) || artist.includes(query) || 
-               userTitle.includes(query) || userArtist.includes(query);
+        return title.includes(query) || artist.includes(query) ||
+          userTitle.includes(query) || userArtist.includes(query);
       });
     }
 
@@ -531,10 +591,10 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
 
     return matches;
   }, [rawMatches, searchQuery, filterBy, sortBy]);
-  
+
   // 安全计算覆盖率
-  const coveragePercent = playlist.trackCount > 0 
-    ? Math.round((rawMatches.length / playlist.trackCount) * 100) 
+  const coveragePercent = playlist.trackCount > 0
+    ? Math.round((rawMatches.length / playlist.trackCount) * 100)
     : 0;
 
   // 统计精确和模糊匹配数量
@@ -551,11 +611,11 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
           <div className="flex items-center justify-between mb-6">
             <button onClick={onBack} className="flex items-center gap-2 text-slate-500 font-bold hover:text-cyan-500 transition-colors">
               <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center"><ArrowLeft size={16} strokeWidth={3} /></div>
-              <span className="text-sm">重选歌单</span>
+              <span className="text-sm">{t('result.reselect')}</span>
             </button>
             <div className="text-right">
               <h1 className="text-xl font-black text-slate-800 italic uppercase truncate max-w-[200px]">{playlist.name}</h1>
-              <p className="text-xs font-bold text-slate-400">Total {playlist.trackCount} Songs</p>
+              <p className="text-xs font-bold text-slate-400">{t('common.total')} {playlist.trackCount} {t('result.songs')}</p>
             </div>
           </div>
 
@@ -582,7 +642,7 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
                 transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
                 className="w-12 h-12 border-[6px] border-slate-200 border-t-cyan-500 rounded-full mb-4"
               />
-              <p className="text-slate-400 font-black uppercase tracking-widest animate-pulse">分析中...</p>
+              <p className="text-slate-400 font-black uppercase tracking-widest animate-pulse">{t('playlist.analyzing')}...</p>
             </div>
           ) : (
             <motion.div variants={containerStagger} initial="hidden" animate="visible" className="space-y-6">
@@ -595,24 +655,24 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
 
                 <div className="relative z-10 flex items-end gap-6 flex-wrap">
                   <div>
-                    <div className="text-xs font-black opacity-80 uppercase tracking-widest mb-1">覆盖率</div>
+                    <div className="text-xs font-black opacity-80 uppercase tracking-widest mb-1">{t('result.coverage')}</div>
                     <div className="text-5xl font-black italic tracking-tighter">
                       {coveragePercent}<span className="text-2xl">%</span>
                     </div>
                   </div>
                   <div className="h-10 w-px bg-white/30 hidden sm:block" />
                   <div>
-                    <div className="text-xs font-black opacity-80 uppercase tracking-widest mb-1">已匹配</div>
-                    <div className="text-3xl font-black">{rawMatches.length} <span className="text-base font-normal opacity-80">Songs</span></div>
+                    <div className="text-xs font-black opacity-80 uppercase tracking-widest mb-1">{t('result.matched')}</div>
+                    <div className="text-3xl font-black">{rawMatches.length} <span className="text-base font-normal opacity-80">{t('result.songs')}</span></div>
                   </div>
                   <div className="h-10 w-px bg-white/30 hidden sm:block" />
                   <div className="flex gap-3">
                     <div className="text-center">
-                      <div className="text-xs font-black opacity-80 uppercase tracking-widest mb-1">精确</div>
+                      <div className="text-xs font-black opacity-80 uppercase tracking-widest mb-1">{t('result.exact')}</div>
                       <div className="text-2xl font-black">{exactCount}</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xs font-black opacity-80 uppercase tracking-widest mb-1">模糊</div>
+                      <div className="text-xs font-black opacity-80 uppercase tracking-widest mb-1">{t('result.fuzzy')}</div>
                       <div className="text-2xl font-black">{fuzzyCount}</div>
                     </div>
                   </div>
@@ -629,7 +689,7 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="搜索歌曲名或艺术家..."
+                      placeholder={t('result.searchPlaceholder')}
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border-2 border-transparent focus:border-cyan-400 focus:bg-white focus:outline-none text-sm font-medium text-slate-700 placeholder:text-slate-400 transition-all"
                     />
                     {searchQuery && (
@@ -649,8 +709,8 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
                       onChange={(e) => setSortBy(e.target.value as SortOption)}
                       className="appearance-none pl-10 pr-8 py-2.5 rounded-xl bg-slate-50 border-2 border-transparent focus:border-cyan-400 focus:bg-white focus:outline-none text-sm font-bold text-slate-700 cursor-pointer transition-all"
                     >
-                      {SORT_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      {SORT_OPTION_KEYS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
                       ))}
                     </select>
                     <ArrowUpDown size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -660,14 +720,13 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
                   {/* 筛选按钮 */}
                   <button
                     onClick={() => setShowFilters(!showFilters)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${
-                      showFilters || filterBy !== 'all'
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${showFilters || filterBy !== 'all'
                         ? 'bg-cyan-500 text-white'
                         : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                    }`}
+                      }`}
                   >
                     <SlidersHorizontal size={16} />
-                    <span>筛选</span>
+                    <span>{t('result.filterBtn')}</span>
                     {filterBy !== 'all' && (
                       <span className="bg-white/30 px-1.5 py-0.5 rounded text-[10px]">1</span>
                     )}
@@ -685,25 +744,23 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
                       className="overflow-hidden"
                     >
                       <div className="pt-4 mt-4 border-t border-slate-100">
-                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">匹配类型</div>
+                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('result.matchType')}</div>
                         <div className="flex flex-wrap gap-2">
-                          {FILTER_OPTIONS.map(opt => (
+                          {FILTER_OPTION_KEYS.map(opt => (
                             <button
                               key={opt.value}
                               onClick={() => setFilterBy(opt.value)}
-                              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                                filterBy === opt.value
+                              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${filterBy === opt.value
                                   ? `${opt.color} text-white shadow-md`
                                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                              }`}
+                                }`}
                             >
                               {filterBy === opt.value && <Check size={14} />}
-                              <span>{opt.label}</span>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                filterBy === opt.value ? 'bg-white/30' : 'bg-slate-200'
-                              }`}>
-                                {opt.value === 'all' ? rawMatches.length : 
-                                 opt.value === 'exact' ? exactCount : fuzzyCount}
+                              <span>{t(opt.labelKey)}</span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${filterBy === opt.value ? 'bg-white/30' : 'bg-slate-200'
+                                }`}>
+                                {opt.value === 'all' ? rawMatches.length :
+                                  opt.value === 'exact' ? exactCount : fuzzyCount}
                               </span>
                             </button>
                           ))}
@@ -717,21 +774,21 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
                 {(searchQuery || filterBy !== 'all') && (
                   <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
                     <p className="text-xs font-bold text-slate-500">
-                      显示 <span className="text-cyan-600">{filteredAndSortedMatches.length}</span> / {rawMatches.length} 首匹配
+                      {t('result.showing')} <span className="text-cyan-600">{filteredAndSortedMatches.length}</span> {t('result.of')} {rawMatches.length} {t('result.matches')}
                     </p>
                     {(searchQuery || filterBy !== 'all') && (
                       <button
                         onClick={() => { setSearchQuery(''); setFilterBy('all'); }}
                         className="text-xs font-bold text-cyan-500 hover:text-cyan-600"
                       >
-                        清除筛选
+                        {t('result.clearFilter')}
                       </button>
                     )}
                   </div>
                 )}
               </div>
 
-              <motion.div 
+              <motion.div
                 className="grid grid-cols-1 md:grid-cols-2 gap-4"
                 variants={containerStagger}
                 initial="hidden"
@@ -746,12 +803,12 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
               {filteredAndSortedMatches.length === 0 && rawMatches.length > 0 && (
                 <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">
                   <Search className="mx-auto mb-2 text-slate-300" size={48} />
-                  <p className="text-slate-400 font-bold">没有找到匹配的结果</p>
+                  <p className="text-slate-400 font-bold">{t('result.noMatchDesc')}</p>
                   <button
                     onClick={() => { setSearchQuery(''); setFilterBy('all'); }}
                     className="mt-2 text-sm font-bold text-cyan-500 hover:text-cyan-600"
                   >
-                    清除筛选条件
+                    {t('result.clearFilter')}
                   </button>
                 </div>
               )}
@@ -759,7 +816,7 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
               {rawMatches.length === 0 && !isMatching && (
                 <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">
                   <AlertCircle className="mx-auto mb-2 text-slate-300" size={48} />
-                  <p className="text-slate-400 font-bold">没有找到匹配歌曲</p>
+                  <p className="text-slate-400 font-bold">{t('result.noMatchInGame')}</p>
                 </div>
               )}
             </motion.div>
@@ -770,83 +827,40 @@ const ResultStep: React.FC<ResultStepProps> = ({ playlist, results, isMatching, 
   );
 };
 
-// 翻转卡片组件
-interface FlipCardProps {
-  frontImage: string;
-  label?: string;
-  backContent: React.ReactNode;
-  fallbackImage?: string;
-  autoFlip?: boolean; // 是否自动翻转
-  autoFlipDelay?: number; // 自动翻转延迟（毫秒）
-}
-
-const FlipCard: React.FC<FlipCardProps> = ({ 
-  frontImage, 
-  label, 
-  backContent, 
-  fallbackImage,
-  autoFlip = false,
-  autoFlipDelay = 2000
-}) => {
-  const [isFlipped, setIsFlipped] = useState(autoFlip);
-
-  // 自动翻转效果
-  useEffect(() => {
-    if (autoFlip) {
-      // 开始时翻转显示背面
-      setIsFlipped(true);
-      // 延迟后翻回正面
-      const timer = setTimeout(() => {
-        setIsFlipped(false);
-      }, autoFlipDelay);
-      return () => clearTimeout(timer);
-    }
-  }, [autoFlip, autoFlipDelay]);
+// BPM 可视化组件
+const BpmVisualizer: React.FC<{ bpm: number }> = ({ bpm }) => {
+  // 计算动画周期 (秒)，限制在合理范围内防止过快或过慢
+  const safeBpm = Math.max(60, Math.min(bpm, 300));
+  const duration = 60 / safeBpm;
 
   return (
-    <div className="w-40 h-40 cursor-pointer group perspective-1000" onClick={() => setIsFlipped(!isFlipped)}>
-      <motion.div
-        initial={autoFlip ? { rotateY: 180 } : false}
-        animate={{ rotateY: isFlipped ? 180 : 0 }}
-        transition={{ duration: 0.6, ease: iosEase }}
-        style={{ transformStyle: "preserve-3d" }}
-        className="relative w-full h-full"
-      >
-        {/* Front */}
-        <div 
-            className="absolute inset-0 rounded-2xl overflow-hidden shadow-xl border-4 border-white bg-slate-200 group-hover:shadow-2xl transition-shadow"
-            style={{ backfaceVisibility: "hidden" }}
-        >
-           <img 
-             src={frontImage} 
-             className="w-full h-full object-cover" 
-             onError={(e) => {
-               if (fallbackImage && e.currentTarget.src !== fallbackImage) {
-                 e.currentTarget.src = fallbackImage;
-               }
-             }}
-           />
-           {label && (
-             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-2 px-2 text-center">
-               <div className="text-white text-[10px] font-black uppercase tracking-widest drop-shadow-md">{label}</div>
-             </div>
-           )}
-           <div className="absolute top-2 right-2 w-7 h-7 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-             <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
-           </div>
-        </div>
-
-        {/* Back */}
-        <div 
-            className="absolute inset-0 rounded-2xl bg-white shadow-xl border-4 border-slate-100 p-4 flex flex-col items-center justify-center text-center overflow-hidden"
-            style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
-        >
-           <div className="w-full h-full flex flex-col items-center justify-center relative">
-             <div className="absolute inset-0 bg-slate-50 opacity-50 -z-10 bg-hex-pattern" />
-             {backContent}
-           </div>
-        </div>
-      </motion.div>
+    <div className="flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
+      <div className="flex items-end gap-0.5 h-4">
+        <motion.div
+          className="w-1 bg-cyan-500 rounded-t-sm"
+          animate={{ height: ["30%", "100%", "30%"] }}
+          transition={{ duration, repeat: Infinity, ease: "easeInOut", delay: 0 }}
+        />
+        <motion.div
+          className="w-1 bg-cyan-500 rounded-t-sm"
+          animate={{ height: ["30%", "100%", "30%"] }}
+          transition={{ duration, repeat: Infinity, ease: "easeInOut", delay: duration * 0.25 }}
+        />
+        <motion.div
+          className="w-1 bg-cyan-500 rounded-t-sm"
+          animate={{ height: ["30%", "100%", "30%"] }}
+          transition={{ duration, repeat: Infinity, ease: "easeInOut", delay: duration * 0.5 }}
+        />
+        <motion.div
+          className="w-1 bg-cyan-500 rounded-t-sm"
+          animate={{ height: ["30%", "100%", "30%"] }}
+          transition={{ duration, repeat: Infinity, ease: "easeInOut", delay: duration * 0.75 }}
+        />
+      </div>
+      <div className="flex flex-col leading-none">
+        <span className="text-[9px] font-bold text-slate-400 uppercase">BPM</span>
+        <span className="text-sm font-black text-slate-700">{bpm}</span>
+      </div>
     </div>
   );
 };
@@ -857,12 +871,17 @@ interface SongModalProps {
 }
 
 const SongModal: React.FC<SongModalProps> = ({ match, onClose }) => {
+  const { t } = useTranslation();
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (match) {
+      // 重置播放状态
+      setAudioUrl(null);
+      setIsPlaying(false);
+
       getSongUrl(match.userSong.id).then(res => {
         if (res && res.url) setAudioUrl(res.url);
       });
@@ -884,189 +903,174 @@ const SongModal: React.FC<SongModalProps> = ({ match, onClose }) => {
 
   if (!match) return null;
 
-  // 获取难度数据
+  // 获取数据
   const charts = match.arcadeSong.charts || [];
-  const songType = match.arcadeSong.type || '';
-  const isNew = match.arcadeSong.isNew;
+  const levels = match.arcadeSong.levels || [];
+  const ds = match.arcadeSong.ds || [];
+  const rawBpm = match.arcadeSong.bpm;
+  // 处理 BPM：如果是数字直接用，如果是字符串尝试解析，失败则默认 120
+  let bpmValue = 120;
+  if (typeof rawBpm === 'number') {
+    bpmValue = rawBpm;
+  } else if (typeof rawBpm === 'string') {
+    const parsed = parseInt(rawBpm);
+    if (!isNaN(parsed)) bpmValue = parsed;
+  } else if (typeof rawBpm === 'object' && rawBpm !== null) {
+    // 处理 {min, max} 对象
+    // @ts-ignore
+    if (rawBpm.max) bpmValue = rawBpm.max;
+  }
+
+  // 难度列表数据准备
+  const difficultyList = charts.length > 0 ? charts : levels.map((lv, i) => ({
+    difficulty: Object.keys(DIFFICULTY_COLORS)[i] || `Level ${i + 1}`,
+    level: lv,
+    ds: ds[i] || 0
+  }));
+
+  // 根据后端返回的 gameId 选择游戏配置
+  const gameId = match.arcadeSong.gameId || 'maimai'; // 默认 maimai
+  let gameConfig = GAMES.find(g => g.id === gameId) || GAMES[0];
 
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center px-4 overflow-y-auto py-8"
+      className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-8"
+      style={{ overflowY: 'auto' }}
     >
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
 
       <motion.div
         layoutId={`card-${match.userSong.id}`}
-        initial={{ scale: 0.8, y: 50, opacity: 0 }}
-        animate={{ scale: 1, y: 0, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        transition={appleSpring}
-        className="relative w-full max-w-3xl bg-white/95 backdrop-blur-xl rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white/50 ring-1 ring-white/20 p-6 md:p-8 my-auto"
+        className="relative w-full max-w-3xl bg-white shadow-2xl rounded-3xl overflow-hidden flex flex-col md:flex-row z-10 my-auto"
       >
-        <button onClick={onClose} className="absolute top-4 right-4 z-20 w-10 h-10 bg-slate-100 hover:bg-red-50 hover:text-red-500 rounded-full flex items-center justify-center text-slate-400 transition-all duration-300 shadow-sm active:scale-90">
+        <button
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          className="absolute top-4 right-4 z-30 w-8 h-8 bg-black/10 hover:bg-black/20 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors backdrop-blur-md"
+        >
           <X size={20} strokeWidth={3} />
         </button>
 
-        {/* 标签区 */}
-        <div className="flex items-center justify-center gap-2 mb-4">
-          {songType && (
-            <span className={`text-xs font-black px-3 py-1 rounded-full ${songType === 'DX' ? 'bg-orange-500' : 'bg-blue-500'} text-white`}>
-              {songType}
-            </span>
-          )}
-          {isNew && (
-            <span className="text-xs font-black px-3 py-1 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-white">
-              NEW
-            </span>
-          )}
-          <span className="text-xs font-black px-3 py-1 rounded-full bg-slate-200 text-slate-600">
-            {match.arcadeSong.category || 'UNKNOWN'}
-          </span>
-        </div>
-
-        <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 mb-6">
-          {/* Left: Source (NetEase) */}
-          <FlipCard 
-            frontImage={match.userSong.coverUrl} 
-            fallbackImage={match.arcadeSong.coverUrl}
-            label="NETEASE MUSIC"
-            autoFlip={true}
-            autoFlipDelay={2000}
-            backContent={
-              <>
-                <div className="text-[10px] text-cyan-500 font-black uppercase mb-1 tracking-wider">Song</div>
-                <div className="font-black text-slate-800 text-sm leading-tight mb-2 line-clamp-2">{match.userSong.name}</div>
-                <div className="text-[10px] text-cyan-500 font-black uppercase mb-1 tracking-wider">Artist</div>
-                <div className="text-xs font-bold text-slate-600 line-clamp-2">{match.userSong.artists}</div>
-                <div className="text-[10px] text-cyan-500 font-black uppercase mb-1 mt-2 tracking-wider">Album</div>
-                <div className="text-[10px] font-bold text-slate-500 line-clamp-1">{match.userSong.album || '-'}</div>
-              </>
-            }
+        {/* 左侧：封面 + 游戏Logo */}
+        <div className="relative w-full md:w-72 h-72 md:h-auto flex-shrink-0 bg-slate-100 group">
+          <img
+            src={match.arcadeSong.coverUrl || match.userSong.coverUrl}
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (target.src !== match.userSong.coverUrl) {
+                target.src = match.userSong.coverUrl;
+              }
+            }}
           />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
-          {/* Middle: Arrow */}
-          <div className="flex flex-col items-center justify-center text-slate-300 relative">
-             <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500/10 to-pink-500/10 rounded-full blur-xl" />
-             <div className={`font-black text-4xl mb-2 ${match.matchType === 'exact' ? 'text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500' : 'text-slate-800'}`}>
-                {((match.score || 0) * 100).toFixed(0)}<span className="text-xl">%</span>
-             </div>
-             
-             <motion.div
-               animate={{ x: [0, 5, 0] }}
-               transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-             >
-               <ArrowRight size={48} strokeWidth={4} className={match.matchType === 'exact' ? 'text-pink-400 drop-shadow-lg' : 'text-yellow-400 drop-shadow-md'} />
-             </motion.div>
-
-             <div className={`text-[10px] font-black uppercase mt-3 tracking-[0.2em] px-3 py-1 rounded-full ${match.matchType === 'exact' ? 'bg-pink-100 text-pink-600' : 'bg-yellow-100 text-yellow-600'}`}>
-               {match.matchType === 'exact' ? 'PERFECT' : 'MATCH'}
-             </div>
+          {/* 游戏 Logo - 右上角 */}
+          <div className="absolute top-3 left-3 right-12">
+            <img
+              src={gameConfig.logoUrl}
+              alt={gameConfig.name}
+              className="h-10 w-auto object-contain drop-shadow-lg"
+              style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }}
+            />
           </div>
 
-          {/* Right: Target (Game) */}
-          <FlipCard 
-            frontImage={match.arcadeSong.coverUrl} 
-            fallbackImage={match.userSong.coverUrl}
-            label={match.arcadeSong.version || 'ARCADE'}
-            autoFlip={true}
-            autoFlipDelay={2000}
-            backContent={
-              <>
-                <div className="text-[10px] text-pink-500 font-black uppercase mb-1 tracking-wider">Title</div>
-                <div className="font-black text-slate-800 text-sm leading-tight mb-2 line-clamp-2">{match.arcadeSong.title}</div>
-                <div className="text-[10px] text-pink-500 font-black uppercase mb-1 tracking-wider">Artist</div>
-                <div className="text-xs font-bold text-slate-600 line-clamp-2">{match.arcadeSong.artist}</div>
-                {match.arcadeSong.bpm && (
-                  <div className="mt-2 px-2 py-1 bg-slate-100 rounded text-[10px] font-black text-slate-500">
-                    ♪ BPM {formatBpm(match.arcadeSong.bpm)}
-                  </div>
-                )}
-              </>
-            }
-          />
+          {/* 左下角：分类 */}
+          <div className="absolute bottom-4 left-4 right-4">
+            <div className="text-white/80 text-[10px] font-bold uppercase tracking-widest mb-1">{t('detail.category')}</div>
+            <div className="text-white text-lg font-black leading-tight drop-shadow-md">
+              {match.arcadeSong.category || t('common.unknown')}
+            </div>
+          </div>
         </div>
 
-        {/* 难度信息 */}
-        {charts.length > 0 && (
-          <div className="bg-slate-100/50 rounded-2xl p-4 mb-4">
-            <div className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 text-center">Difficulty Levels</div>
-            <div className="flex flex-wrap justify-center gap-2">
-              {charts.map((chart: any, i: number) => (
-                <div 
+        {/* 右侧：详细信息 */}
+        <div className="flex-1 p-6 md:p-8 flex flex-col min-w-0 bg-white relative">
+          {/* 标题区 */}
+          <div className="mb-6 pr-8">
+            <h2 className="text-2xl md:text-3xl font-black text-slate-800 leading-tight mb-2 line-clamp-2" title={match.arcadeSong.title}>
+              {match.arcadeSong.title}
+            </h2>
+            <p className="text-sm font-bold text-slate-500 line-clamp-1" title={match.arcadeSong.artist}>
+              {match.arcadeSong.artist}
+            </p>
+          </div>
+
+          {/* 核心数据栏 */}
+          <div className="flex flex-wrap items-center gap-4 mb-6">
+            <BpmVisualizer bpm={bpmValue} />
+            <div className="h-8 w-px bg-slate-200" />
+            <div>
+              <div className="text-[9px] font-bold text-slate-400 uppercase">{t('detail.version')}</div>
+              <div className="text-xs font-black text-slate-700 truncate max-w-[120px]">{match.arcadeSong.version || '-'}</div>
+            </div>
+            {/* 来源确认 */}
+            <div className="ml-auto flex items-center gap-2 px-2 py-1 bg-slate-50 rounded-md border border-slate-100">
+              <img src={match.userSong.coverUrl} className="w-5 h-5 rounded-sm" />
+              <span className="text-[10px] font-bold text-slate-400">{t('detail.netease')}</span>
+            </div>
+          </div>
+
+          {/* 难度展示区 - 游戏风格 */}
+          <div className="flex-1 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">{t('detail.difficulty')}</h3>
+              {match.arcadeSong.type && (
+                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded text-white ${match.arcadeSong.type === 'DX' ? 'bg-orange-400' : 'bg-blue-400'}`}>
+                  {match.arcadeSong.type}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {difficultyList.map((chart: any, i: number) => (
+                <div
                   key={i}
-                  className={`flex flex-col items-center p-2 rounded-xl ${getDifficultyColor(chart.difficulty)} text-white min-w-[60px]`}
+                  className={`
+                    relative flex flex-col items-center justify-center w-14 h-14 rounded-xl shadow-sm border-2 border-white ring-1 ring-slate-100
+                    ${getDifficultyBg(chart.difficulty)} text-white overflow-hidden group hover:scale-110 transition-transform cursor-default
+                  `}
+                  title={`${chart.difficulty} ${chart.notes ? `(${chart.notes} notes)` : ''}`}
                 >
-                  <div className="text-[10px] font-bold opacity-80">{chart.difficulty}</div>
-                  <div className="text-lg font-black">{chart.level}</div>
-                  {chart.ds && <div className="text-[10px] font-bold opacity-80">{chart.ds.toFixed(1)}</div>}
-                  {chart.charter && chart.charter !== '-' && (
-                    <div className="text-[8px] font-medium opacity-70 truncate max-w-[50px]" title={chart.charter}>
-                      {chart.charter}
+                  <div className="absolute top-0 inset-x-0 h-1/2 bg-white/10" />
+                  <div className="text-[9px] font-bold uppercase opacity-90 relative z-10 translate-y-[-2px]">
+                    {chart.difficulty.substring(0, 3)}
+                  </div>
+                  <div className="text-xl font-black leading-none relative z-10 shadow-black drop-shadow-sm">
+                    {chart.level}
+                  </div>
+                  {chart.ds > 0 && (
+                    <div className="absolute bottom-0.5 text-[8px] font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 px-1 rounded-full">
+                      {typeof chart.ds === 'number' ? chart.ds.toFixed(1) : chart.ds}
                     </div>
                   )}
                 </div>
               ))}
             </div>
           </div>
-        )}
 
-        <div className="bg-slate-50/50 rounded-2xl p-4 border border-white/60 shadow-inner">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-             <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100">
-               <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-600">
-                 <Music size={16} />
-               </div>
-               <div className="min-w-0 flex-1">
-                 <div className="text-[9px] font-bold text-slate-400 uppercase">Version</div>
-                 <div className="font-bold text-slate-700 text-xs truncate">{match.arcadeSong.version || '-'}</div>
-               </div>
-             </div>
-             
-             <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100">
-               <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600">
-                 <Star size={16} />
-               </div>
-               <div className="min-w-0 flex-1">
-                 <div className="text-[9px] font-bold text-slate-400 uppercase">Score</div>
-                 <div className="font-bold text-slate-700 text-xs">{((match.score || 0) * 100).toFixed(1)}%</div>
-               </div>
-             </div>
+          {/* 底部功能栏 */}
+          <div className="mt-auto pt-4 border-t border-slate-100 flex gap-3">
+            <button
+              onClick={togglePlay}
+              disabled={!audioUrl}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all font-black text-sm
+                 ${audioUrl
+                  ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-200 active:scale-[0.98]'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+            >
+              {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+              <span>{audioUrl ? (isPlaying ? 'PAUSE' : 'PLAY PREVIEW') : 'NO PREVIEW'}</span>
+            </button>
 
-             <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100">
-               <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-black">
-                 ♪
-               </div>
-               <div className="min-w-0 flex-1">
-                 <div className="text-[9px] font-bold text-slate-400 uppercase">BPM</div>
-                 <div className="font-bold text-slate-700 text-xs">{formatBpm(match.arcadeSong.bpm)}</div>
-               </div>
-             </div>
-
-             <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100">
-               <div className="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 text-xs font-black">
-                 #
-               </div>
-               <div className="min-w-0 flex-1">
-                 <div className="text-[9px] font-bold text-slate-400 uppercase">ID</div>
-                 <div className="font-bold text-slate-700 text-xs truncate">{match.arcadeSong.id || '-'}</div>
-               </div>
-             </div>
+            <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-center items-center min-w-[80px]">
+              <span className="text-[9px] font-bold text-slate-400 uppercase">Match</span>
+              <span className={`text-sm font-black ${match.matchType === 'exact' ? 'text-pink-500' : 'text-yellow-500'}`}>
+                {((match.score || 0) * 100).toFixed(0)}%
+              </span>
+            </div>
           </div>
-
-          <button
-            onClick={togglePlay}
-            disabled={!audioUrl}
-            className={`w-full font-black py-3 rounded-xl shadow-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-all
-               ${audioUrl
-                ? 'bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-white shadow-cyan-400/30'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
-          >
-            {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-            <span className="text-sm">{audioUrl ? (isPlaying ? 'PAUSE' : 'PLAY PREVIEW') : 'No Preview'}</span>
-          </button>
-
           <audio ref={audioRef} src={audioUrl || undefined} onEnded={() => setIsPlaying(false)} />
         </div>
       </motion.div>
@@ -1307,16 +1311,19 @@ export default function App() {
       <Background />
 
       <div className="relative z-10 h-screen flex flex-col">
-        <div className="h-16 flex items-center justify-between px-6 border-b border-white/50 backdrop-blur-sm">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-white/50 backdrop-blur-sm relative z-[400]">
           <div className="font-black italic text-xl tracking-tighter flex items-center gap-1 text-slate-800 cursor-pointer" onClick={() => setStep('input')}>
             <div className="w-3 h-6 bg-cyan-400 skew-x-12" />
             <div className="w-3 h-6 bg-pink-500 skew-x-12" />
             <span className="ml-2">RHYTHM<span className="text-cyan-500">SYNC</span></span>
           </div>
 
-          <a href="https://github.com/DuoGeYu" target="_blank" className="text-xs font-bold text-slate-400 hover:text-cyan-500 transition-colors">
-            MADE BY DUOGEYU
-          </a>
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher />
+            <a href="https://github.com/DuoGeYu" target="_blank" className="text-xs font-bold text-slate-400 hover:text-cyan-500 transition-colors">
+              MADE BY DUOGEYU
+            </a>
+          </div>
         </div>
 
         <div className="flex-1 relative overflow-hidden">

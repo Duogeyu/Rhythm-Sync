@@ -1,0 +1,29 @@
+{
+  "sessionId": "mk8cawo1t3cqqh7ies8",
+  "clientIp": "::1",
+  "neteaseUid": "411352857",
+  "playlistId": "17585607732",
+  "playlistName": "like",
+  "songCount": 19,
+  "matchResults": {
+    "chunithm": {
+      "matchCount": 7
+    },
+    "taiko": {
+      "matchCount": 2
+    },
+    "maimai": {
+      "matchCount": 6
+    },
+    "maimai-cn": {
+      "matchCount": 6
+    },
+    "ongeki": {
+      "matchCount": 4
+    }
+  },
+  "startTime": 1768051650529,
+  "endTime": 1768051665665,
+  "duration": 15136,
+  "timestamp": "2026-01-10T13:27:45.666Z"
+}

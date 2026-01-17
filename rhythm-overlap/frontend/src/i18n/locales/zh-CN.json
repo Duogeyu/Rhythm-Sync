@@ -1,0 +1,85 @@
+{
+  "app": {
+    "title": "歌单音游匹配",
+    "titleMain": "歌单",
+    "titleAccent": "音游匹配",
+    "subtitle": "发现你的歌曲在哪些音游中",
+    "description": "输入你的网易云音乐用户ID，我们会帮你找到这些歌曲在哪些街机音游中出现"
+  },
+  "input": {
+    "placeholder": "输入网易云用户ID...",
+    "submit": "开始探索",
+    "loading": "获取歌单中...",
+    "hint": "在网易云音乐个人主页地址栏中可以找到你的用户ID"
+  },
+  "playlist": {
+    "title": "选择歌单",
+    "songs": "首歌曲",
+    "back": "返回",
+    "analyzing": "分析中"
+  },
+  "result": {
+    "title": "匹配结果",
+    "found": "找到 {{count}} 首匹配",
+    "noMatch": "未找到匹配",
+    "noMatchDesc": "没有符合搜索条件的匹配",
+    "noMatchInGame": "该游戏暂无匹配结果",
+    "reselect": "重选歌单",
+    "searchPlaceholder": "搜索歌曲名或艺术家...",
+    "coverage": "覆盖率",
+    "matched": "已匹配",
+    "songs": "首",
+    "exact": "精确",
+    "fuzzy": "模糊",
+    "showing": "显示",
+    "of": "/",
+    "matches": "首匹配",
+    "clearFilter": "清除筛选",
+    "matchType": "匹配类型",
+    "filterBtn": "筛选",
+    "filter": {
+      "all": "全部",
+      "exact": "精确匹配",
+      "fuzzy": "模糊匹配"
+    },
+    "sort": {
+      "score": "匹配度",
+      "title": "歌名",
+      "artist": "艺术家",
+      "scoreDesc": "分数 (高→低)",
+      "scoreAsc": "分数 (低→高)",
+      "titleAsc": "曲名 (A→Z)",
+      "titleDesc": "曲名 (Z→A)",
+      "artistAsc": "艺术家 (A→Z)"
+    }
+  },
+  "detail": {
+    "category": "分类",
+    "version": "版本",
+    "bpm": "BPM",
+    "source": "来源",
+    "difficulty": "难度",
+    "match": "匹配度",
+    "notes": "物量",
+    "netease": "网易云"
+  },
+  "games": {
+    "maimai": "maimai DX (国际)",
+    "maimai-cn": "maimai DX (国服)",
+    "chunithm": "CHUNITHM",
+    "ongeki": "ONGEKI",
+    "taiko": "太鼓达人"
+  },
+  "common": {
+    "loading": "加载中...",
+    "error": "出错了",
+    "retry": "重试",
+    "close": "关闭",
+    "unknown": "未知",
+    "total": "共"
+  },
+  "language": {
+    "zh-CN": "简体中文",
+    "en-US": "English"
+  }
+}
