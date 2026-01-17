@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Cache & Generated Files
+server/.cache/
+server/.covers/
+server/.shares/
+server/.songs/
+
+# Logs
+*.log
+server/ai_debug.log
+
+# Test images
+test_*.png
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+

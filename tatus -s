@@ -1,0 +1,190 @@
+ has_data.json                                      |    45 [32m+[m
+ package-lock.json                                  |   103 [32m+[m
+ package.json                                       |     7 [32m+[m
+ rhythm-overlap/API_DOCS.md                         |   716 [32m+[m
+ rhythm-overlap/DESIGN_HANDOFF.md                   |    80 [31m-[m
+ rhythm-overlap/frontend/DESIGN_REFERENCE.md        |   448 [32m+[m
+ rhythm-overlap/frontend/package-lock.json          |   427 [32m+[m[31m-[m
+ rhythm-overlap/frontend/package.json               |     6 [32m+[m
+ rhythm-overlap/frontend/public/assets/CREDITS.md   |    55 [32m+[m
+ .../public/assets/backgrounds/ongeki-smoke1.webp   |   Bin [31m0[m -> [32m21194[m bytes
+ .../public/assets/backgrounds/ongeki-smoke2.webp   |   Bin [31m0[m -> [32m20906[m bytes
+ .../assets/backgrounds/prism/bg_aurora_pc.png      |   Bin [31m0[m -> [32m77561[m bytes
+ .../assets/backgrounds/prism/bg_cloud_back_c.png   |   Bin [31m0[m -> [32m2481[m bytes
+ .../assets/backgrounds/prism/bg_cloud_back_l.png   |   Bin [31m0[m -> [32m3159[m bytes
+ .../assets/backgrounds/prism/bg_cloud_back_r.png   |   Bin [31m0[m -> [32m6380[m bytes
+ .../assets/backgrounds/prism/bg_cloud_front_c.png  |   Bin [31m0[m -> [32m4211[m bytes
+ .../assets/backgrounds/prism/bg_cloud_front_l.png  |   Bin [31m0[m -> [32m4314[m bytes
+ .../assets/backgrounds/prism/bg_cloud_front_r.png  |   Bin [31m0[m -> [32m4107[m bytes
+ .../assets/backgrounds/prism/bg_diamond_pink.png   |   Bin [31m0[m -> [32m293[m bytes
+ .../assets/backgrounds/prism/bg_diamond_white.png  |   Bin [31m0[m -> [32m207[m bytes
+ .../assets/backgrounds/prism/bg_diamond_yellow.png |   Bin [31m0[m -> [32m207[m bytes
+ .../public/assets/backgrounds/prism/bg_moon.png    |   Bin [31m0[m -> [32m14556[m bytes
+ .../assets/backgrounds/prism/bg_rainbow_btm_pc.png |   Bin [31m0[m -> [32m13015[m bytes
+ .../assets/backgrounds/prism/bg_shines_pc.png      |   Bin [31m0[m -> [32m6610[m bytes
+ .../assets/backgrounds/prism/bg_star_white.png     |   Bin [31m0[m -> [32m2350[m bytes
+ .../assets/backgrounds/prism/bg_star_yellow.png    |   Bin [31m0[m -> [32m2347[m bytes
+ .../public/assets/backgrounds/taiko-mv.jpg         |   Bin [31m0[m -> [32m229901[m bytes
+ .../public/assets/characters/chunithm-chara.webp   |   Bin [31m0[m -> [32m228928[m bytes
+ .../public/assets/characters/maimai-chara.png      |   Bin [31m0[m -> [32m400268[m bytes
+ .../public/assets/characters/maimai-laundry.png    |   Bin [31m0[m -> [32m29797[m bytes
+ .../public/assets/characters/taiko-catch.png       |   Bin [31m0[m -> [32m507688[m bytes
+ rhythm-overlap/frontend/public/logos/CREDITS.md    |    42 [32m+[m
+ .../public/logos/cabinets/cabinet-placeholder.png  |   Bin [31m0[m -> [32m253281[m bytes
+ .../public/logos/cabinets/chunithm-cn-cabinet.png  |   Bin [31m0[m -> [32m1710147[m bytes
+ .../public/logos/cabinets/maimai-cabinet-front.png |   Bin [31m0[m -> [32m166929[m bytes
+ .../public/logos/cabinets/maimai-cabinet.png       |   Bin [31m0[m -> [32m393004[m bytes
+ .../public/logos/cabinets/maimai-cn-cabinet.png    |   Bin [31m0[m -> [32m234050[m bytes
+ .../public/logos/cabinets/ongeki-cabinet.png       |   Bin [31m0[m -> [32m281396[m bytes
+ .../public/logos/cabinets/taiko-cn-cabinet.jpeg    |   Bin [31m0[m -> [32m580625[m bytes
+ .../frontend/public/logos/chunithm-intl.png        |   Bin [31m0[m -> [32m21921[m bytes
+ .../frontend/public/logos/chunithm-jp.webp         |   Bin [31m0[m -> [32m33992[m bytes
+ rhythm-overlap/frontend/public/logos/maimai-cn.png |   Bin [31m0[m -> [32m262030[m bytes
+ .../frontend/public/logos/maimai-intl.png          |   Bin [31m0[m -> [32m25044[m bytes
+ rhythm-overlap/frontend/public/logos/maimai-jp.png |   Bin [31m0[m -> [32m262030[m bytes
+ rhythm-overlap/frontend/public/logos/ongeki.webp   |   Bin [31m0[m -> [32m64840[m bytes
+ .../frontend/public/logos/platforms/bilibili.svg   |     1 [32m+[m
+ .../frontend/public/logos/platforms/netease.svg    |     1 [32m+[m
+ .../frontend/public/logos/platforms/qqmusic.svg    |     4 [32m+[m
+ rhythm-overlap/frontend/public/logos/taiko.png     |   Bin [31m0[m -> [32m36553[m bytes
+ rhythm-overlap/frontend/src/App.tsx                |  1446 [32m+[m[31m-[m
+ .../frontend/src/components/Background.tsx         |   154 [32m+[m
+ .../frontend/src/components/BpmVisualizer.tsx      |    57 [32m+[m
+ .../frontend/src/components/GameLogoMarquee.tsx    |    37 [32m+[m
+ rhythm-overlap/frontend/src/components/GameTab.tsx |    62 [32m+[m
+ .../frontend/src/components/InputStep.tsx          |   288 [32m+[m
+ .../frontend/src/components/LanguageSwitcher.tsx   |    57 [32m+[m
+ .../frontend/src/components/MatchCard.tsx          |   159 [32m+[m
+ .../frontend/src/components/PlaylistStep.tsx       |    80 [32m+[m
+ .../frontend/src/components/PrivacyModal.tsx       |   205 [32m+[m
+ .../frontend/src/components/ResultStep.tsx         |   473 [32m+[m
+ .../frontend/src/components/ShareModal.tsx         |   680 [32m+[m
+ .../frontend/src/components/SharePage.tsx          |   827 [32m+[m
+ .../frontend/src/components/SongModal.tsx          |   254 [32m+[m
+ rhythm-overlap/frontend/src/config/games.ts        |   101 [32m+[m
+ rhythm-overlap/frontend/src/i18n/index.ts          |    24 [32m+[m
+ .../frontend/src/i18n/locales/en-US.json           |   147 [32m+[m
+ .../frontend/src/i18n/locales/zh-CN.json           |   147 [32m+[m
+ rhythm-overlap/frontend/src/index.css              |   175 [32m+[m[31m-[m
+ rhythm-overlap/frontend/src/main.tsx               |     1 [32m+[m
+ rhythm-overlap/frontend/src/services/api.ts        |   237 [32m+[m[31m-[m
+ rhythm-overlap/frontend/src/utils/format.ts        |    40 [32m+[m
+ rhythm-overlap/frontend/tailwind.config.js         |    29 [32m+[m[31m-[m
+ rhythm-overlap/frontend/vite.config.ts             |     4 [32m+[m[31m-[m
+ rhythm-overlap/server/.cache/chunithm-jp.json      |     1 [32m+[m
+ rhythm-overlap/server/.cache/chunithm.json         |     2 [32m+[m[31m-[m
+ rhythm-overlap/server/.cache/maimai-cn.json        |     2 [32m+[m[31m-[m
+ rhythm-overlap/server/.cache/maimai-jp.json        |     1 [32m+[m
+ rhythm-overlap/server/.cache/maimai.json           |     2 [32m+[m[31m-[m
+ rhythm-overlap/server/.cache/ongeki.json           |     2 [32m+[m[31m-[m
+ rhythm-overlap/server/.cache/taiko.json            |     2 [32m+[m[31m-[m
+ .../.covers/chunithm/chunithm_27d4fa167283.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_5e4dc3aa0df5.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_6b00da72a6c2.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_6d524c8e7fa8.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_760092115f95.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_7917822440f3.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_8c295c4abb8a.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_938705f298bc.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_a88273e6251f.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_b3bf426d3133.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_be4bb4d16a79.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_c5b3858fa7ed.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_c8b00e756f52.png     |    15 [32m+[m
+ .../.covers/chunithm/chunithm_ed5d01330abe.png     |    15 [32m+[m
+ .../.covers/maimai-cn/maimai-cn_000588591f2e.png   |   Bin [31m0[m -> [32m24372[m bytes
+ .../.covers/maimai-cn/maimai-cn_00663b034162.png   |   Bin [31m0[m -> [32m84298[m bytes
+ .../.covers/maimai-cn/maimai-cn_006bfa380209.png   |   Bin [31m0[m -> [32m73197[m bytes
+ .../.covers/maimai-cn/maimai-cn_009c2016f606.png   |   Bin [31m0[m -> [32m69928[m bytes
+ .../.covers/maimai-cn/maimai-cn_00fb6e865329.png   |   Bin [31m0[m -> [32m22629[m bytes
+ .../.covers/maimai-cn/maimai-cn_01169df1a9d8.png   |   Bin [31m0[m -> [32m35875[m bytes
+ .../.covers/maimai-cn/maimai-cn_019dd56510f7.png   |   Bin [31m0[m -> [32m73092[m bytes
+ .../.covers/maimai-cn/maimai-cn_022ae16e9631.png   |   Bin [31m0[m -> [32m82211[m bytes
+ .../.covers/maimai-cn/maimai-cn_02391e7a6dfe.png   |   Bin [31m0[m -> [32m72022[m bytes
+ .../.covers/maimai-cn/maimai-cn_02d158534bcb.png   |   Bin [31m0[m -> [32m52724[m bytes
+ .../.covers/maimai-cn/maimai-cn_02dbf6ee0c1e.png   |   Bin [31m0[m -> [32m45891[m bytes
+ .../.covers/maimai-cn/maimai-cn_03802fa12277.png   |   Bin [31m0[m -> [32m48986[m bytes
+ .../.covers/maimai-cn/maimai-cn_039667a770d4.png   |   Bin [31m0[m -> [32m81264[m bytes
+ .../.covers/maimai-cn/maimai-cn_03e236779a0f.png   |   Bin [31m0[m -> [32m90790[m bytes
+ .../.covers/maimai-cn/maimai-cn_0489beaf8000.png   |   Bin [31m0[m -> [32m70941[m bytes
+ .../.covers/maimai-cn/maimai-cn_04bc62fc503a.png   |   Bin [31m0[m -> [32m71784[m bytes
+ .../.covers/maimai-cn/maimai-cn_0521c9cea897.png   |   Bin [31m0[m -> [32m65080[m bytes
+ .../.covers/maimai-cn/maimai-cn_0564cfb01993.png   |   Bin [31m0[m -> [32m59600[m bytes
+ .../.covers/maimai-cn/maimai-cn_0575d867318b.png   |   Bin [31m0[m -> [32m44729[m bytes
+ .../.covers/maimai-cn/maimai-cn_0599d3943f5c.png   |   Bin [31m0[m -> [32m73396[m bytes
+ .../.covers/maimai-cn/maimai-cn_059bce159df4.png   |   Bin [31m0[m -> [32m58400[m bytes
+ .../.covers/maimai-cn/maimai-cn_05bd021ac3b1.png   |   Bin [31m0[m -> [32m86349[m bytes
+ .../.covers/maimai-cn/maimai-cn_05d591fb5775.png   |   Bin [31m0[m -> [32m61132[m bytes
+ .../.covers/maimai-cn/maimai-cn_06d74584f28c.png   |   Bin [31m0[m -> [32m77113[m bytes
+ .../.covers/maimai-cn/maimai-cn_06de6da3e46a.png   |   Bin [31m0[m -> [32m60535[m bytes
+ .../.covers/maimai-cn/maimai-cn_06f23d8b3c1c.png   |   Bin [31m0[m -> [32m76660[m bytes
+ .../.covers/maimai-cn/maimai-cn_0713342856fc.png   |   Bin [31m0[m -> [32m36355[m bytes
+ .../.covers/maimai-cn/maimai-cn_07184c8a2ca9.png   |   Bin [31m0[m -> [32m66866[m bytes
+ .../.covers/maimai-cn/maimai-cn_076cfc3b3cb9.png   |   Bin [31m0[m -> [32m61230[m bytes
+ .../.covers/maimai-cn/maimai-cn_078e835d41bf.png   |   Bin [31m0[m -> [32m69646[m bytes
+ .../.covers/maimai-cn/maimai-cn_07caff52e71d.png   |   Bin [31m0[m -> [32m51233[m bytes
+ .../.covers/maimai-cn/maimai-cn_07e05226c457.png   |   Bin [31m0[m -> [32m79958[m bytes
+ .../.covers/maimai-cn/maimai-cn_086b551011d1.png   |   Bin [31m0[m -> [32m97730[m bytes
+ .../.covers/maimai-cn/maimai-cn_08834273a011.png   |   Bin [31m0[m -> [32m65934[m bytes
+ .../.covers/maimai-cn/maimai-cn_0938bd97dead.png   |   Bin [31m0[m -> [32m99677[m bytes
+ .../.covers/maimai-cn/maimai-cn_094ca3b4eb77.png   |   Bin [31m0[m -> [32m107441[m bytes
+ .../.covers/maimai-cn/maimai-cn_098d367ff4c3.png   |   Bin [31m0[m -> [32m81720[m bytes
+ .../.covers/maimai-cn/maimai-cn_09d47866feea.png   |   Bin [31m0[m -> [32m93621[m bytes
+ .../.covers/maimai-cn/maimai-cn_0a14b2cf490e.png   |   Bin [31m0[m -> [32m80716[m bytes
+ .../.covers/maimai-cn/maimai-cn_0a624ed5c059.png   |   Bin [31m0[m -> [32m54813[m bytes
+ .../.covers/maimai-cn/maimai-cn_0ac0acd03f3c.png   |   Bin [31m0[m -> [32m27158[m bytes
+ .../.covers/maimai-cn/maimai-cn_0ad86d5863af.png   |   Bin [31m0[m -> [32m90324[m bytes
+ .../.covers/maimai-cn/maimai-cn_0ae201f1c41f.png   |   Bin [31m0[m -> [32m48892[m bytes
+ .../.covers/maimai-cn/maimai-cn_0ae22a037452.png   |   Bin [31m0[m -> [32m64825[m bytes
+ .../.covers/maimai-cn/maimai-cn_0b9fc2dacba9.png   |   Bin [31m0[m -> [32m88262[m bytes
+ .../.covers/maimai-cn/maimai-cn_0ba4c624eb33.png   |   Bin [31m0[m -> [32m81365[m bytes
+ .../.covers/maimai-cn/maimai-cn_0be8953c7be5.png   |   Bin [31m0[m -> [32m75749[m bytes
+ .../.covers/maimai-cn/maimai-cn_0bf1013807cf.png   |   Bin [31m0[m -> [32m70029[m bytes
+ .../.covers/maimai-cn/maimai-cn_0c0497de8626.png   |   Bin [31m0[m -> [32m88007[m bytes
+ .../.covers/maimai-cn/maimai-cn_0c1084beb930.png   |   Bin [31m0[m -> [32m88851[m bytes
+ .../.covers/maimai-cn/maimai-cn_0c91776cd247.png   |   Bin [31m0[m -> [32m51755[m bytes
+ .../.covers/maimai-cn/maimai-cn_0d3d89f7e212.png   |   Bin [31m0[m -> [32m84127[m bytes
+ .../.covers/maimai-cn/maimai-cn_0d4e32fc2384.png   |   Bin [31m0[m -> [32m83527[m bytes
+ .../.covers/maimai-cn/maimai-cn_0d679209df37.png   |   Bin [31m0[m -> [32m91974[m bytes
+ .../.covers/maimai-cn/maimai-cn_0db11242378e.png   |   Bin [31m0[m -> [32m73297[m bytes
+ .../.covers/maimai-cn/maimai-cn_0e43935c3252.png   |   Bin [31m0[m -> [32m77085[m bytes
+ .../.covers/maimai-cn/maimai-cn_0e926fe0a694.png   |   Bin [31m0[m -> [32m84459[m bytes
+ .../.covers/maimai-cn/maimai-cn_0f25e48c65eb.png   |   Bin [31m0[m -> [32m70505[m bytes
+ .../.covers/maimai-cn/maimai-cn_0f7f15a52b11.png   |   Bin [31m0[m -> [32m33026[m bytes
+ .../.covers/maimai-cn/maimai-cn_0fa94d694e22.png   |   Bin [31m0[m -> [32m79561[m bytes
+ .../.covers/maimai-cn/maimai-cn_0fb2386ae4ed.png   |   Bin [31m0[m -> [32m77388[m bytes
+ .../.covers/maimai-cn/maimai-cn_0fcbf2b99322.png   |   Bin [31m0[m -> [32m83579[m bytes
+ .../.covers/maimai-cn/maimai-cn_0fe6bb10d7a5.png   |   Bin [31m0[m -> [32m58172[m bytes
+ .../.covers/maimai-cn/maimai-cn_10fe76a879dc.png   |   Bin [31m0[m -> [32m81311[m bytes
+ .../.covers/maimai-cn/maimai-cn_1202775060af.png   |   Bin [31m0[m -> [32m65705[m bytes
+ .../.covers/maimai-cn/maimai-cn_1218bd9211fb.png   |   Bin [31m0[m -> [32m66259[m bytes
+ .../.covers/maimai-cn/maimai-cn_121a14e860a4.png   |   Bin [31m0[m -> [32m64003[m bytes
+ .../.covers/maimai-cn/maimai-cn_123fdb619065.png   |   Bin [31m0[m -> [32m44634[m bytes
+ .../.covers/maimai-cn/maimai-cn_12899198ffa8.png   |   Bin [31m0[m -> [32m79392[m bytes
+ .../.covers/maimai-cn/maimai-cn_12982099337f.png   |   Bin [31m0[m -> [32m84756[m bytes
+ .../.covers/maimai-cn/maimai-cn_12c742bb74ba.png   |   Bin [31m0[m -> [32m88654[m bytes
+ .../.covers/maimai-cn/maimai-cn_131ef3f3cccf.png   |   Bin [31m0[m -> [32m73307[m bytes
+ .../.covers/maimai-cn/maimai-cn_137119615c75.png   |   Bin [31m0[m -> [32m77846[m bytes
+ .../.covers/maimai-cn/maimai-cn_13d034456f5b.png   |   Bin [31m0[m -> [32m82010[m bytes
+ .../.covers/maimai-cn/maimai-cn_14afb522a3ab.png   |   Bin [31m0[m -> [32m65960[m bytes
+ .../.covers/maimai-cn/maimai-cn_1542daaf566c.png   |   Bin [31m0[m -> [32m74881[m bytes
+ .../.covers/maimai-cn/maimai-cn_154baa6f4b02.png   |   Bin [31m0[m -> [32m74940[m bytes
+ .../.covers/maimai-cn/maimai-cn_1552c161c3ee.png   |   Bin [31m0[m -> [32m49228[m bytes
+ .../.covers/maimai-cn/maimai-cn_156460de32e6.png   |   Bin [31m0[m -> [32m70173[m bytes
+ .../.covers/maimai-cn/maimai-cn_156b266b0a6d.png   |   Bin [31m0[m -> [32m38411[m bytes
+ .../.covers/maimai-cn/maimai-cn_15bde33ce167.png   |   Bin [31m0[m -> [32m86535[m bytes
+ .../.covers/maimai-cn/maimai-cn_160cece13c80.png   |   Bin [31m0[m -> [32m74115[m bytes
+ .../.covers/maimai-cn/maimai-cn_16717c7b92d1.png   |   Bin [31m0[m -> [32m72227[m bytes
+ .../.covers/maimai-cn/maimai-cn_167e9b9355fb.png   |   Bin [31m0[m -> [32m31675[m bytes
+ .../.covers/maimai-cn/maimai-cn_168f983d45fa.png   |   Bin [31m0[m -> [32m82735[m bytes
+ .../.covers/maimai-cn/maimai-cn_16a0112cf6a4.png   |   Bin [31m0[m -> [32m84784[m bytes
+ .../.covers/maimai-cn/maimai-cn_16c216162d77.png   |   Bin [31m0[m -> [32m58142[m bytes
+ .../.covers/maimai-cn/maimai-cn_1700beb34a63.png   |   Bin [31m0[m -> [32m35543[m bytes
+ .../.covers/maimai-cn/maimai-cn_17115d88aeaf.png   |   Bin [31m0[m -> [32m62119[m bytes
+ .../.covers/maimai-cn/maimai-cn_17869775480b.png   |   Bin [31m0[m -> [32m25817[m bytes
+ .../.covers/maimai-cn/maimai-cn_17ec0a401539.png   |   Bin [31m0[m -> [32m31079[m bytes
+ .../.covers/maimai-cn/maimai-cn_17f931fbbb7e.png   |   Bin [31m0[m -> [32m54727[m bytes
+ .../.covers/maimai-cn/maimai-cn_18075dbda26c.png   |   Bin [31m0[m -> [32m79660[m bytes
+ .../.covers/maimai-cn/maimai-cn_1811164c11dd.png   |   Bin [31m0[m -> [32m60558[m bytes
+ .../.covers/maimai-cn/maimai-cn_18317c5ab2dc.png   |   Bin [31m0[m -> [32m58371[m bytes
+ .../.covers/maimai-cn/maimai-cn_1956422e1
