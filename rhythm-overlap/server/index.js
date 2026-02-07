@@ -5,6 +5,8 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
+const { Worker } = require('worker_threads');
+const { normalizeTitle } = require('./utils');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -39,11 +41,12 @@ function sanitizeInput(input) {
     return sanitized.trim();
 }
 
+const URL_PATTERN = /https?:\/\/[^\s<>"'()（）\[\]【】]+/gi;
+
 // 从混合文本中提取 URL
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
-    const urlPattern = /https?:\/\/[^\s<>"'()（）\[\]【】]+/gi;
-    const matches = text.match(urlPattern);
+    const matches = text.match(URL_PATTERN);
     return matches ? matches[0] : null;
 }
 
@@ -315,7 +318,7 @@ app.use((req, res, next) => {
 });
 
 // 保存查询日志
-function saveQueryLog(logData) {
+async function saveQueryLog(logData) {
     const { sessionId, clientIp, neteaseUid, playlistId, playlistName, songCount, matchResults, startTime, endTime } = logData;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -341,14 +344,19 @@ function saveQueryLog(logData) {
         timestamp: new Date().toISOString()
     };
 
-    fs.writeFileSync(filepath, JSON.stringify(logEntry, null, 2), 'utf-8');
-    console.log(`[LOG] 查询日志已保存: ${filename}`);
+    try {
+        await fs.promises.writeFile(filepath, JSON.stringify(logEntry, null, 2), 'utf-8');
+        console.log(`[LOG] 查询日志已保存: ${filename}`);
+    } catch (error) {
+        console.error(`[LOG] 保存日志失败: ${error.message}`);
+    }
 
     return filename;
 }
 
 // ============== 缓存配置 ==============
 const CACHE_DIR = path.join(__dirname, '.cache');
+const IN_MEMORY_SONG_CACHE = new Map(); // gameId -> { timestamp, songs, titleMap, fuse }
 const COVERS_DIR = path.join(__dirname, '.covers');
 const CONFIG_FILE = path.join(__dirname, 'config', 'active-sources.json');
 const COVERS_CONFIG_FILE = path.join(__dirname, 'config', 'covers.json');
@@ -643,13 +651,27 @@ function getCacheFilePath(gameId) {
 }
 
 function readCache(gameId) {
+    // 1. Check in-memory
+    if (IN_MEMORY_SONG_CACHE.has(gameId)) {
+        const cached = IN_MEMORY_SONG_CACHE.get(gameId);
+        if (Date.now() - cached.timestamp < CACHE_DURATION) {
+             console.log(`[缓存] ${gameId} 命中内存缓存 (${cached.songs.length}首)`);
+             return cached.songs;
+        }
+    }
+
     const filePath = getCacheFilePath(gameId);
     if (!fs.existsSync(filePath)) return null;
 
     try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         if (Date.now() - data.timestamp < CACHE_DURATION) {
-            console.log(`[缓存] ${gameId} 命中缓存 (${data.songs.length}首)`);
+            console.log(`[缓存] ${gameId} 命中磁盘缓存 (${data.songs.length}首)`);
+            // Update in-memory cache
+            IN_MEMORY_SONG_CACHE.set(gameId, {
+                timestamp: data.timestamp,
+                songs: data.songs
+            });
             return data.songs;
         }
         console.log(`[缓存] ${gameId} 缓存过期`);
@@ -660,11 +682,19 @@ function readCache(gameId) {
 }
 
 function writeCache(gameId, songs) {
+    const timestamp = Date.now();
     const filePath = getCacheFilePath(gameId);
     fs.writeFileSync(filePath, JSON.stringify({
-        timestamp: Date.now(),
+        timestamp,
         songs
     }));
+
+    // Update in-memory cache
+    IN_MEMORY_SONG_CACHE.set(gameId, {
+        timestamp,
+        songs
+    });
+
     console.log(`[缓存] ${gameId} 已写入缓存 (${songs.length}首)`);
 }
 
@@ -1626,7 +1656,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                 }
             });
             
-            fs.writeFileSync(localPath, response.data);
+            await fs.promises.writeFile(localPath, response.data);
             return localPath;
         } catch (e) {
             if (i === coversConfig.retryCount - 1) {
@@ -1738,7 +1768,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         });
         
         // 保存到本地
-        fs.writeFileSync(filePath, response.data);
+        await fs.promises.writeFile(filePath, response.data);
         console.log(`[封面] 缓存成功 ${gameId}: ${fileName}`);
         
         // 返回图片
@@ -2680,6 +2710,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
 
         // 保存查询日志
         const endTime = Date.now();
+        // 异步保存日志，不阻塞响应
         saveQueryLog({
             sessionId,
             clientIp,
@@ -2690,7 +2721,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
             matchResults: matchResultsForLog,
             startTime,
             endTime
-        });
+        }).catch(err => console.error('Log save error:', err));
 
         sendEvent('done', {});
         res.end();
@@ -2727,18 +2758,6 @@ app.post('/api/match-all', async (req, res) => {
 
         const gameDataResults = await Promise.all(gameDataPromises);
 
-        // 辅助函数：标准化标题用于精确匹配
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '') // 去除空格
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
-
         // 对每个游戏进行匹配（并行处理）
         const matchPromises = gameDataResults.map(async ({ gameId, songs, error }) => {
             if (error) {
@@ -2752,67 +2771,50 @@ app.post('/api/match-all', async (req, res) => {
                 };
             }
 
-            // 1. 建立精确匹配索引 (Map)
-            const titleMap = new Map();
-            songs.forEach(s => {
-                titleMap.set(normalizeTitle(s.title), s);
-                // 尝试保留原始标题作为 key 备用
-                titleMap.set(s.title, s);
-            });
+            // 使用 Worker Thread 进行匹配
+            return new Promise((resolve, reject) => {
+                const worker = new Worker(path.join(__dirname, 'match_worker.js'), {
+                    workerData: {
+                        songs,
+                        userSongs,
+                        gameId,
+                        config: GAME_CONFIG[gameId]
+                    }
+                });
 
-            // 2. 建立 Fuse.js 模糊匹配索引
-            const fuse = new Fuse(songs, {
-                keys: ['title', 'artist'],
-                threshold: 0.3,
-                includeScore: true
-            });
+                worker.on('message', (message) => {
+                    if (message.success) {
+                        resolve(message.result);
+                    } else {
+                        resolve({
+                            [gameId]: {
+                                error: message.error,
+                                config: GAME_CONFIG[gameId],
+                                stats: null,
+                                matches: []
+                            }
+                        });
+                    }
+                });
 
-            const matches = [];
-            const matchedUserSongIds = new Set();
-
-            for (const userSong of userSongs) {
-                // 优化：先尝试精确匹配
-                const normalizedParams = normalizeTitle(userSong.name);
-
-                if (titleMap.has(normalizedParams)) {
-                    matches.push({
-                        userSong,
-                        arcadeSong: titleMap.get(normalizedParams),
-                        score: 1.0,
-                        matchType: 'exact'
+                worker.on('error', (err) => {
+                    console.error(`Worker error for ${gameId}:`, err);
+                    resolve({
+                        [gameId]: {
+                            error: err.message,
+                            config: GAME_CONFIG[gameId],
+                            stats: null,
+                            matches: []
+                        }
                     });
-                    matchedUserSongIds.add(userSong.id);
-                    continue; // 命中精确匹配，跳过 Fuse
-                }
+                });
 
-                // 未命中，使用 Fuse 模糊匹配
-                const fuseResults = fuse.search(userSong.name);
-
-                if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-                    matches.push({
-                        userSong,
-                        arcadeSong: fuseResults[0].item,
-                        score: 1 - fuseResults[0].score,
-                        matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-                    });
-                    matchedUserSongIds.add(userSong.id);
-                }
-            }
-
-            const stats = {
-                totalUserSongs: userSongs.length,
-                totalArcadeSongs: songs.length,
-                matchedCount: matches.length,
-                overlapPercentage: Math.round((matches.length / userSongs.length) * 100)
-            };
-
-            return {
-                [gameId]: {
-                    config: GAME_CONFIG[gameId],
-                    stats,
-                    matches: matches.sort((a, b) => b.score - a.score)
-                }
-            };
+                worker.on('exit', (code) => {
+                    if (code !== 0) {
+                        console.error(`Worker stopped with exit code ${code}`);
+                    }
+                });
+            });
         });
 
         const matchResults = await Promise.all(matchPromises);
@@ -3179,15 +3181,16 @@ app.get('/api/random', async (req, res) => {
         }
         
         // 获取歌曲
-        let allSongs = [];
-        for (const gameId of targetGames) {
+        const songsResults = await Promise.all(targetGames.map(async (gameId) => {
             try {
-                const songs = await fetchGameSongs(gameId);
-                allSongs = allSongs.concat(songs);
+                return await fetchGameSongs(gameId);
             } catch (e) {
                 console.warn(`[随机] 获取 ${gameId} 失败: ${e.message}`);
+                return [];
             }
-        }
+        }));
+
+        let allSongs = songsResults.flat();
         
         if (allSongs.length === 0) {
             return res.status(500).json({ success: false, error: '无法获取歌曲数据' });
@@ -3526,7 +3529,7 @@ app.get('/api/check', async (req, res) => {
         const matches = {};
         let foundInGames = 0;
         
-        for (const [gameId, config] of Object.entries(GAME_CONFIG)) {
+        const checkPromises = Object.entries(GAME_CONFIG).map(async ([gameId, config]) => {
             try {
                 const songs = await fetchGameSongs(gameId);
                 
@@ -3561,25 +3564,37 @@ app.get('/api/check', async (req, res) => {
                 }
                 
                 if (match) {
-                    matches[gameId] = {
-                        gameName: config.name,
-                        found: true,
-                        song: {
-                            id: match.id,
-                            title: match.title,
-                            artist: match.artist,
-                            category: match.category,
-                            coverUrl: match.coverUrl,
-                            charts: match.charts || [],
-                            levels: match.levels || []
+                    return {
+                        gameId,
+                        data: {
+                            gameName: config.name,
+                            found: true,
+                            song: {
+                                id: match.id,
+                                title: match.title,
+                                artist: match.artist,
+                                category: match.category,
+                                coverUrl: match.coverUrl,
+                                charts: match.charts || [],
+                                levels: match.levels || []
+                            }
                         }
                     };
-                    foundInGames++;
                 }
             } catch (e) {
                 console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
             }
-        }
+            return null;
+        });
+
+        const results = await Promise.all(checkPromises);
+
+        results.forEach(result => {
+            if (result) {
+                matches[result.gameId] = result.data;
+                foundInGames++;
+            }
+        });
         
         res.json({
             success: true,
@@ -3917,17 +3932,38 @@ app.post('/api/bot/query', async (req, res) => {
                 const gameSongs = await fetchGameSongs(gameId);
                 
                 // 建立索引
-                const titleMap = new Map();
-                gameSongs.forEach(s => {
-                    titleMap.set(normalizeTitle(s.title), s);
-                    titleMap.set(s.title, s);
-                });
+                let titleMap, fuse;
                 
-                const fuse = new Fuse(gameSongs, {
-                    keys: ['title', 'artist'],
-                    threshold: 0.3,
-                    includeScore: true
-                });
+                // 尝试使用缓存的索引
+                const cachedEntry = IN_MEMORY_SONG_CACHE.get(gameId);
+
+                // 只有当内存缓存中的 songs 对象与当前的 gameSongs 对象相同时，才复用索引
+                // 因为 readCache 已经确保了如果我们命中内存缓存，或者刚从磁盘读取并更新了内存缓存，
+                // fetchGameSongs 返回的 gameSongs 就是内存缓存中的那个对象。
+                if (cachedEntry && cachedEntry.songs === gameSongs && cachedEntry.fuse) {
+                    titleMap = cachedEntry.titleMap;
+                    fuse = cachedEntry.fuse;
+                    // console.log(`[索引] ${gameId} 复用缓存索引`);
+                } else {
+                    titleMap = new Map();
+                    gameSongs.forEach(s => {
+                        titleMap.set(normalizeTitle(s.title), s);
+                        titleMap.set(s.title, s);
+                    });
+
+                    fuse = new Fuse(gameSongs, {
+                        keys: ['title', 'artist'],
+                        threshold: 0.3,
+                        includeScore: true
+                    });
+
+                    // 如果存在对应的缓存条目（说明 songs 对象一致），则保存索引以供复用
+                    if (cachedEntry && cachedEntry.songs === gameSongs) {
+                        cachedEntry.titleMap = titleMap;
+                        cachedEntry.fuse = fuse;
+                        console.log(`[索引] ${gameId} 建立并缓存新索引`);
+                    }
+                }
                 
                 const matches = [];
                 
