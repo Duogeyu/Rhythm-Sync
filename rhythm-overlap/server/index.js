@@ -13,7 +13,9 @@ const {
     playlist_detail,
     playlist_track_all,
     song_detail,
-    song_url
+    song_url,
+    song_chorus,
+    cloudsearch
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
@@ -1887,6 +1889,417 @@ app.get('/api/netease/song/:id/url', async (req, res) => {
         }
     } catch (error) {
         console.error('获取试听链接错误:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============== 歌曲高潮时间点 API（永久缓存） ==============
+
+// 高潮缓存：内存 + 文件双层缓存，永不过期
+const chorusCacheFile = path.join(__dirname, '.cache', 'chorus-cache.json');
+const chorusCache = new Map(); // 内存缓存：songId -> { startTime, endTime }
+
+// 启动时从文件加载缓存
+try {
+    if (fs.existsSync(chorusCacheFile)) {
+        const data = JSON.parse(fs.readFileSync(chorusCacheFile, 'utf-8'));
+        let count = 0;
+        for (const [id, val] of Object.entries(data)) {
+            chorusCache.set(id, val);
+            count++;
+        }
+        console.log(`[高潮缓存] 从文件加载了 ${count} 条缓存`);
+    }
+} catch (e) {
+    console.warn('[高潮缓存] 加载缓存文件失败:', e.message);
+}
+
+// 保存缓存到文件（防抖，避免频繁写入）
+let chorusSaveTimer = null;
+function saveChorusCache() {
+    if (chorusSaveTimer) clearTimeout(chorusSaveTimer);
+    chorusSaveTimer = setTimeout(() => {
+        try {
+            const cacheDir = path.dirname(chorusCacheFile);
+            if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+            const obj = Object.fromEntries(chorusCache);
+            fs.writeFileSync(chorusCacheFile, JSON.stringify(obj), 'utf-8');
+        } catch (e) {
+            console.warn('[高潮缓存] 保存缓存文件失败:', e.message);
+        }
+    }, 2000); // 2秒防抖
+}
+
+app.get('/api/netease/song/:id/chorus', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. 先查内存缓存
+        if (chorusCache.has(id)) {
+            return res.json({ success: true, cached: true, ...chorusCache.get(id) });
+        }
+
+        // 2. 调用网易云 API
+        const result = await song_chorus({ id });
+
+        if (result.body.code === 200 && result.body.chorus && result.body.chorus.length > 0) {
+            const chorus = result.body.chorus[0];
+            const data = {
+                startTime: chorus.startTime,  // 毫秒
+                endTime: chorus.endTime        // 毫秒
+            };
+
+            // 3. 写入缓存（永久）
+            chorusCache.set(id, data);
+            saveChorusCache();
+
+            res.json({ success: true, cached: false, ...data });
+        } else {
+            // 没有高潮数据，也缓存一个空结果避免重复请求
+            chorusCache.set(id, { startTime: null, endTime: null });
+            saveChorusCache();
+
+            res.json({ success: false, error: '该歌曲无高潮标记数据' });
+        }
+    } catch (error) {
+        console.error('[高潮] 获取错误:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 批量获取高潮数据（一次请求多首歌，减少前端请求次数）
+app.post('/api/netease/songs/chorus', async (req, res) => {
+    try {
+        const { ids } = req.body; // 数组: ["123", "456", ...]
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, error: '请提供歌曲 ID 数组' });
+        }
+
+        // 限制单次最多 50 首
+        const limitedIds = ids.slice(0, 50);
+        const results = {};
+        const uncachedIds = [];
+
+        // 先从缓存取
+        for (const id of limitedIds) {
+            const sid = String(id);
+            if (chorusCache.has(sid)) {
+                results[sid] = chorusCache.get(sid);
+            } else {
+                uncachedIds.push(sid);
+            }
+        }
+
+        // 未缓存的逐个请求（串行，避免被限流）
+        for (const id of uncachedIds) {
+            try {
+                const result = await song_chorus({ id });
+                if (result.body.code === 200 && result.body.chorus && result.body.chorus.length > 0) {
+                    const chorus = result.body.chorus[0];
+                    const data = { startTime: chorus.startTime, endTime: chorus.endTime };
+                    chorusCache.set(id, data);
+                    results[id] = data;
+                } else {
+                    chorusCache.set(id, { startTime: null, endTime: null });
+                    results[id] = { startTime: null, endTime: null };
+                }
+            } catch (e) {
+                results[id] = { startTime: null, endTime: null, error: e.message };
+            }
+        }
+
+        // 有新数据就保存
+        if (uncachedIds.length > 0) saveChorusCache();
+
+        res.json({
+            success: true,
+            total: limitedIds.length,
+            cached: limitedIds.length - uncachedIds.length,
+            fetched: uncachedIds.length,
+            results
+        });
+    } catch (error) {
+        console.error('[高潮批量] 获取错误:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============== 街机歌曲音频搜索 API（网易云优先 + QQ音乐备用，永久缓存） ==============
+
+const arcadeAudioCacheFile = path.join(__dirname, '.cache', 'arcade-audio-cache.json');
+const arcadeAudioCache = new Map(); // key: "gameId_songId" → { neteaseId, qqmid, title, artist, source }
+
+// 启动时加载缓存
+try {
+    if (fs.existsSync(arcadeAudioCacheFile)) {
+        const data = JSON.parse(fs.readFileSync(arcadeAudioCacheFile, 'utf-8'));
+        let count = 0;
+        for (const [k, v] of Object.entries(data)) {
+            arcadeAudioCache.set(k, v);
+            count++;
+        }
+        console.log(`[原曲缓存] 从文件加载了 ${count} 条缓存`);
+    }
+} catch (e) {
+    console.warn('[原曲缓存] 加载缓存文件失败:', e.message);
+}
+
+let arcadeAudioSaveTimer = null;
+function saveArcadeAudioCache() {
+    if (arcadeAudioSaveTimer) clearTimeout(arcadeAudioSaveTimer);
+    arcadeAudioSaveTimer = setTimeout(() => {
+        try {
+            const cacheDir = path.dirname(arcadeAudioCacheFile);
+            if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+            fs.writeFileSync(arcadeAudioCacheFile, JSON.stringify(Object.fromEntries(arcadeAudioCache)), 'utf-8');
+        } catch (e) {
+            console.warn('[原曲缓存] 保存失败:', e.message);
+        }
+    }, 2000);
+}
+
+// 简易字符串相似度（用于从搜索结果选最佳匹配）
+function stringSimilarity(a, b) {
+    if (!a || !b) return 0;
+    a = a.toLowerCase().trim();
+    b = b.toLowerCase().trim();
+    if (a === b) return 1;
+    // 包含关系
+    if (a.includes(b) || b.includes(a)) return 0.8;
+    // Jaccard on bigrams
+    const bigrams = (s) => {
+        const set = new Set();
+        for (let i = 0; i < s.length - 1; i++) set.add(s.substring(i, i + 2));
+        return set;
+    };
+    const setA = bigrams(a);
+    const setB = bigrams(b);
+    if (setA.size === 0 || setB.size === 0) return 0;
+    let intersection = 0;
+    for (const bg of setA) { if (setB.has(bg)) intersection++; }
+    return intersection / (setA.size + setB.size - intersection);
+}
+
+// 从网易云搜索街机歌曲
+async function searchNetease(title, artist) {
+    try {
+        const keywords = artist ? `${title} ${artist}` : title;
+        const result = await cloudsearch({ keywords, limit: 8, type: 1 });
+        const songs = result.body?.result?.songs;
+        if (!songs || songs.length === 0) return null;
+
+        // 选标题最相似的
+        let best = null, bestScore = -1;
+        for (const s of songs) {
+            const titleSim = stringSimilarity(s.name, title);
+            const artistNames = (s.ar || []).map(a => a.name).join(' ');
+            const artistSim = artist ? stringSimilarity(artistNames, artist) * 0.3 : 0;
+            const score = titleSim + artistSim;
+            if (score > bestScore) {
+                bestScore = score;
+                best = s;
+            }
+        }
+
+        if (best && bestScore > 0.3) {
+            return {
+                neteaseId: best.id,
+                title: best.name,
+                artist: (best.ar || []).map(a => a.name).join(', '),
+                source: 'netease'
+            };
+        }
+        return null;
+    } catch (e) {
+        console.warn('[原曲搜索] 网易云搜索失败:', e.message);
+        return null;
+    }
+}
+
+// 从QQ音乐搜索（备用）
+async function searchQQMusic(title, artist) {
+    try {
+        const keywords = artist ? `${title} ${artist}` : title;
+        const resp = await axios.get('https://c.y.qq.com/soso/fcgi-bin/client_search_cp', {
+            params: { w: keywords, format: 'json', p: 1, n: 5, cr: 1 },
+            headers: { 'Referer': 'https://y.qq.com', 'User-Agent': 'Mozilla/5.0' },
+            timeout: 8000
+        });
+        const songs = resp.data?.data?.song?.list;
+        if (!songs || songs.length === 0) return null;
+
+        let best = null, bestScore = -1;
+        for (const s of songs) {
+            const titleSim = stringSimilarity(s.songname, title);
+            const singerNames = (s.singer || []).map(a => a.name).join(' ');
+            const artistSim = artist ? stringSimilarity(singerNames, artist) * 0.3 : 0;
+            const score = titleSim + artistSim;
+            if (score > bestScore) {
+                bestScore = score;
+                best = s;
+            }
+        }
+
+        if (best && bestScore > 0.3) {
+            return {
+                qqmid: best.songmid,
+                qqid: best.songid,
+                title: best.songname,
+                artist: (best.singer || []).map(a => a.name).join(', '),
+                source: 'qqmusic'
+            };
+        }
+        return null;
+    } catch (e) {
+        console.warn('[原曲搜索] QQ音乐搜索失败:', e.message);
+        return null;
+    }
+}
+
+// 获取网易云音频URL
+// 获取网易云音频URL（检测 VIP 试听片段，返回 null 让调用方 fallback）
+async function getNeteaseAudioUrl(neteaseId) {
+    try {
+        const result = await song_url({ id: neteaseId, br: 320000 });
+        if (result.body.code !== 200 || !result.body.data?.[0]?.url) return null;
+
+        const d = result.body.data[0];
+
+        // 检测 VIP 试听片段：freeTrialInfo 存在且 end > 0 表示只有部分试听
+        if (d.freeTrialInfo && d.freeTrialInfo.end > 0) {
+            console.log(`[原曲] 网易云 ${neteaseId} 是 VIP 试听 (${d.freeTrialInfo.end}s)，跳过`);
+            return null; // 返回 null，让调用方走 QQ 音乐备用
+        }
+
+        // fee=1 且 payed=0 也是 VIP 未付费，但有些歌仍能播完整版，用 size 兜底判断
+        // 如果文件小于 500KB 大概率是试听片段
+        if (d.fee === 1 && d.payed === 0 && d.size < 500000) {
+            console.log(`[原曲] 网易云 ${neteaseId} 疑似 VIP 短片段 (size=${d.size})，跳过`);
+            return null;
+        }
+
+        return d.url;
+    } catch {
+        return null;
+    }
+}
+
+// 获取QQ音乐音频URL
+async function getQQMusicAudioUrl(songmid) {
+    try {
+        // 方法1: 公开流媒体链接
+        const url = `https://ws.stream.qqmusic.qq.com/C400${songmid}.m4a?fromtag=38`;
+        const resp = await axios.head(url, { timeout: 5000, maxRedirects: 3 });
+        if (resp.status === 200) return url;
+        return null;
+    } catch {
+        // 方法2: 备用域名
+        try {
+            const url2 = `https://isure.stream.qqmusic.qq.com/C400${songmid}.m4a?fromtag=38`;
+            const resp2 = await axios.head(url2, { timeout: 5000, maxRedirects: 3 });
+            if (resp2.status === 200) return url2;
+        } catch {}
+        return null;
+    }
+}
+
+app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
+    try {
+        const { gameId, songId } = req.params;
+        const { title, artist } = req.query;
+        const cacheKey = `${gameId}_${songId}`;
+
+        // 1. 查缓存
+        if (arcadeAudioCache.has(cacheKey)) {
+            const cached = arcadeAudioCache.get(cacheKey);
+
+            // 缓存了"找不到"的结果
+            if (!cached.neteaseId && !cached.qqmid) {
+                return res.json({ success: false, cached: true, error: '未找到该歌曲的音频源' });
+            }
+
+            // 从缓存的源获取 URL（按优先级尝试：QQ音乐 > 网易云，因为网易云可能是VIP）
+            let url = null;
+            let actualSource = cached.source;
+
+            // 先尝试 QQ 音乐（无 VIP 限制）
+            if (cached.qqmid) {
+                url = await getQQMusicAudioUrl(cached.qqmid);
+                if (url) actualSource = 'qqmusic';
+            }
+            // QQ 音乐失败才尝试网易云
+            if (!url && cached.neteaseId) {
+                url = await getNeteaseAudioUrl(cached.neteaseId);
+                if (url) actualSource = 'netease';
+            }
+
+            if (url) {
+                return res.json({
+                    success: true, cached: true, url,
+                    source: cached.source,
+                    matchedTitle: cached.title,
+                    matchedArtist: cached.artist,
+                    neteaseId: cached.neteaseId || null
+                });
+            }
+            return res.json({ success: false, cached: true, error: '音频链接暂不可用' });
+        }
+
+        if (!title) {
+            return res.status(400).json({ success: false, error: '缺少 title 参数' });
+        }
+
+        // 2. 并行搜索两个平台（都搜，保存两边的 ID，方便 fallback）
+        const [neteaseResult, qqResult] = await Promise.allSettled([
+            searchNetease(title, artist),
+            searchQQMusic(title, artist)
+        ]);
+
+        const neteaseMatch = neteaseResult.status === 'fulfilled' ? neteaseResult.value : null;
+        const qqMatch = qqResult.status === 'fulfilled' ? qqResult.value : null;
+
+        // 合并缓存数据（保存两边的 ID）
+        const cacheData = {
+            neteaseId: neteaseMatch?.neteaseId || null,
+            qqmid: qqMatch?.qqmid || null,
+            title: neteaseMatch?.title || qqMatch?.title || title,
+            artist: neteaseMatch?.artist || qqMatch?.artist || artist,
+            source: null
+        };
+
+        // 3. 获取可播放的 URL（QQ 音乐优先，因为没有 VIP 限制）
+        let url = null;
+        let source = '';
+
+        // 先试 QQ 音乐
+        if (qqMatch?.qqmid) {
+            url = await getQQMusicAudioUrl(qqMatch.qqmid);
+            if (url) { source = 'qqmusic'; cacheData.source = 'qqmusic'; }
+        }
+
+        // QQ 音乐失败，试网易云（可能是 VIP 试听，getNeteaseAudioUrl 会自动跳过）
+        if (!url && neteaseMatch?.neteaseId) {
+            url = await getNeteaseAudioUrl(neteaseMatch.neteaseId);
+            if (url) { source = 'netease'; cacheData.source = 'netease'; }
+        }
+
+        // 4. 缓存结果（不管成不成功都缓存，保存两边的 ID）
+        arcadeAudioCache.set(cacheKey, cacheData);
+        saveArcadeAudioCache();
+
+        if (url) {
+            return res.json({
+                success: true, cached: false, url, source,
+                matchedTitle: cacheData.title,
+                matchedArtist: cacheData.artist,
+                neteaseId: cacheData.neteaseId
+            });
+        }
+
+        res.json({ success: false, cached: false, error: '未找到可播放的音频源（VIP 歌曲或版权限制）' });
+
+    } catch (error) {
+        console.error('[原曲音频] 错误:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });

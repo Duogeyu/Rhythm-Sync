@@ -1,0 +1,35 @@
+{
+  "sessionId": "mlbsc44j7lzpuvap7pr",
+  "clientIp": "::ffff:171.112.213.173",
+  "neteaseUid": "3266924174",
+  "playlistId": "4930426734",
+  "playlistName": "小崎Qistar喜欢的音乐",
+  "songCount": 98,
+  "matchResults": {
+    "taiko": {
+      "matchCount": 11
+    },
+    "maimai": {
+      "matchCount": 21
+    },
+    "maimai-jp": {
+      "matchCount": 24
+    },
+    "maimai-cn": {
+      "matchCount": 21
+    },
+    "ongeki": {
+      "matchCount": 16
+    },
+    "chunithm": {
+      "matchCount": 20
+    },
+    "chunithm-jp": {
+      "matchCount": 19
+    }
+  },
+  "startTime": 1770436761571,
+  "endTime": 1770436761877,
+  "duration": 306,
+  "timestamp": "2026-02-07T03:59:21.877Z"
+}

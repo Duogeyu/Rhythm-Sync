@@ -366,3 +366,81 @@ export async function getSongUrl(songId: number): Promise<SongUrlResult | null> 
         return null;
     }
 }
+
+// 高潮时间点 API
+export interface ChorusResult {
+    startTime: number | null;  // 毫秒
+    endTime: number | null;    // 毫秒
+}
+
+export async function getSongChorus(songId: number): Promise<ChorusResult | null> {
+    try {
+        const response = await fetch(`${API_BASE}/netease/song/${songId}/chorus`);
+        const data = await response.json();
+        if (data.success && data.startTime != null) {
+            return { startTime: data.startTime, endTime: data.endTime };
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+// 街机原曲音频搜索 API（网易云优先 + QQ音乐备用，服务端永久缓存）
+export interface ArcadeAudioResult {
+    url: string;
+    source: 'netease' | 'qqmusic';
+    matchedTitle: string;
+    matchedArtist: string;
+    neteaseId: number | null;
+}
+
+// 跨游戏检查 API（查看这首歌在哪些游戏中存在）
+export interface CrossGameMatch {
+    gameName: string;
+    found: boolean;
+    song?: {
+        id: string;
+        title: string;
+        artist: string;
+        charts?: ChartInfo[];
+        levels?: (string | number)[];
+        coverUrl?: string;
+    };
+}
+
+export async function checkSongInGames(title: string, artist?: string): Promise<{ foundInGames: number; totalGames: number; matches: Record<string, CrossGameMatch> } | null> {
+    try {
+        const params = new URLSearchParams({ title });
+        if (artist) params.set('artist', artist);
+        const response = await fetch(`${API_BASE}/check?${params}`);
+        const data = await response.json();
+        if (data.success) {
+            return { foundInGames: data.foundInGames, totalGames: data.totalGames, matches: data.matches };
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+export async function getArcadeSongAudio(gameId: string, songId: string, title: string, artist?: string): Promise<ArcadeAudioResult | null> {
+    try {
+        const params = new URLSearchParams({ title });
+        if (artist) params.set('artist', artist);
+        const response = await fetch(`${API_BASE}/arcade-song/${gameId}/${songId}/audio?${params}`);
+        const data = await response.json();
+        if (data.success && data.url) {
+            return {
+                url: data.url,
+                source: data.source,
+                matchedTitle: data.matchedTitle,
+                matchedArtist: data.matchedArtist,
+                neteaseId: data.neteaseId
+            };
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
