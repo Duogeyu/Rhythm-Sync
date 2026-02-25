@@ -1,0 +1,24 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Runtime and debug artifacts
+*.log
+*.tmp
+
+# Local temporary data files
+temp_*.json
+has_data.json
+stats.txt
+tatus -s
+
+# Node
+node_modules/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/

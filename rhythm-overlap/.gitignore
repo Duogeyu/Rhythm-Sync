@@ -1,11 +1,26 @@
 # Dependencies
 node_modules/
 
+# Environment files
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
 # Cache & Generated Files
 server/.cache/
 server/.covers/
 server/.shares/
 server/.songs/
+server/.logs/
+server/.bot_results/
+server/.song_images/
+frontend/dist/
 
 # Logs
 *.log
@@ -21,4 +36,5 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+.claude/
 

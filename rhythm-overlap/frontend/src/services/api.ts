@@ -233,6 +233,9 @@ export interface ArcadeSong {
     ds?: number[];
     gameId?: string;
     type?: string; // e.g., 'DX' | 'STD'
+    wikiUrl?: string | null;
+    dateAdded?: string | null;
+    dateIntlAdded?: string | null;
 }
 
 // 匹配标签类型
@@ -347,6 +350,8 @@ export interface SongUrlResult {
     br: number;
     size: number;
     type: string;
+    isVip?: boolean;
+    previewDuration?: number | null;
 }
 
 export async function getSongUrl(songId: number): Promise<SongUrlResult | null> {
@@ -358,7 +363,9 @@ export async function getSongUrl(songId: number): Promise<SongUrlResult | null> 
                 url: data.url,
                 br: data.br,
                 size: data.size,
-                type: data.type
+                type: data.type,
+                isVip: data.isVip || false,
+                previewDuration: data.previewDuration || null
             };
         }
         return null;
@@ -393,6 +400,8 @@ export interface ArcadeAudioResult {
     matchedTitle: string;
     matchedArtist: string;
     neteaseId: number | null;
+    isVip?: boolean;
+    previewDuration?: number | null;
 }
 
 // 跨游戏检查 API（查看这首歌在哪些游戏中存在）
@@ -436,7 +445,9 @@ export async function getArcadeSongAudio(gameId: string, songId: string, title: 
                 source: data.source,
                 matchedTitle: data.matchedTitle,
                 matchedArtist: data.matchedArtist,
-                neteaseId: data.neteaseId
+                neteaseId: data.neteaseId,
+                isVip: data.isVip || false,
+                previewDuration: data.previewDuration || null
             };
         }
         return null;

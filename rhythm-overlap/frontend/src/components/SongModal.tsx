@@ -42,6 +42,10 @@ export default function SongModal({ match, onClose }: SongModalProps) {
     const [activeSource, setActiveSource] = useState<'arcade' | 'user'>('arcade');
     const [arcadeSourceInfo, setArcadeSourceInfo] = useState('');
 
+    // VIP 状态
+    const [arcadeVipInfo, setArcadeVipInfo] = useState<{ isVip: boolean; previewDuration: number | null }>({ isVip: false, previewDuration: null });
+    const [userVipInfo, setUserVipInfo] = useState<{ isVip: boolean; previewDuration: number | null }>({ isVip: false, previewDuration: null });
+
     // === "更多"区域 ===
     const [showMore, setShowMore] = useState(false);
     const [crossGameData, setCrossGameData] = useState<Record<string, CrossGameMatch> | null>(null);
@@ -84,6 +88,8 @@ export default function SongModal({ match, onClose }: SongModalProps) {
         setDuration(0);
         setActiveSource('arcade');
         setArcadeSourceInfo('');
+        setArcadeVipInfo({ isVip: false, previewDuration: null });
+        setUserVipInfo({ isVip: false, previewDuration: null });
         setShowMore(false);
         setCrossGameData(null);
         hasAutoPlayed.current = false;
@@ -103,6 +109,12 @@ export default function SongModal({ match, onClose }: SongModalProps) {
                 const srcLabel = res.source === 'qqmusic' ? 'QQ音乐' : '网易云';
                 setArcadeSourceInfo(`${srcLabel}: ${res.matchedTitle}`);
 
+                // 保存 VIP 信息
+                setArcadeVipInfo({
+                    isVip: res.isVip || false,
+                    previewDuration: res.previewDuration || null
+                });
+
                 // 用街机原曲的网易云 ID 查高潮（这才是对的歌）
                 if (res.neteaseId) {
                     getSongChorus(res.neteaseId).then(c => {
@@ -114,7 +126,14 @@ export default function SongModal({ match, onClose }: SongModalProps) {
 
         // 2. 用户歌单版本
         getSongUrl(match.userSong.id).then(res => {
-            if (res?.url) setUserAudioUrl(res.url);
+            if (res?.url) {
+                setUserAudioUrl(res.url);
+                // 保存 VIP 信息
+                setUserVipInfo({
+                    isVip: res.isVip || false,
+                    previewDuration: res.previewDuration || null
+                });
+            }
         }).catch(() => {}).finally(() => setUserLoading(false));
 
         // 3. 用户歌曲高潮（作为备用，万一街机原曲没有网易云 ID）
@@ -269,10 +288,9 @@ export default function SongModal({ match, onClose }: SongModalProps) {
         <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-8"
-            style={{ overflowY: 'auto' }}
+            className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-8 overflow-y-auto"
         >
-            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
 
             <motion.div
                 layoutId={`card-${match.userSong.id}`}
@@ -393,7 +411,7 @@ export default function SongModal({ match, onClose }: SongModalProps) {
                             className="flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-cyan-500 transition-colors">
                             {showMore ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             <Gamepad2 size={13} />
-                            <span>更多信息 · 跨游戏收录</span>
+                            <span>更多信息</span>
                         </button>
 
                         <AnimatePresence>
@@ -405,7 +423,107 @@ export default function SongModal({ match, onClose }: SongModalProps) {
                                     transition={{ duration: 0.25 }}
                                     className="overflow-hidden"
                                 >
-                                    <div className="pt-3 space-y-3">
+                                    <div className="pt-3 space-y-4">
+                                        {/* 当前游戏详细信息 */}
+                                        <div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">游戏内信息</div>
+                                            <div className="bg-slate-50 rounded-lg p-3 space-y-2">
+                                                {/* 基本信息网格 */}
+                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <div>
+                                                        <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">游戏</div>
+                                                        <div className="font-bold text-slate-700">{gameConfig.name}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">歌曲ID</div>
+                                                        <div className="font-mono text-[10px] text-slate-600">{match.arcadeSong.id}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">版本</div>
+                                                        <div className="font-bold text-slate-700 truncate" title={match.arcadeSong.version || '-'}>
+                                                            {match.arcadeSong.version || '-'}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">分类</div>
+                                                        <div className="font-bold text-slate-700 truncate" title={match.arcadeSong.category || '-'}>
+                                                            {match.arcadeSong.category || '-'}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">BPM</div>
+                                                        <div className="font-bold text-slate-700 tabular-nums">
+                                                            {typeof rawBpm === 'object' && rawBpm !== null && 'min' in rawBpm && 'max' in rawBpm
+                                                                ? `${rawBpm.min}-${rawBpm.max}`
+                                                                : bpmValue}
+                                                        </div>
+                                                    </div>
+                                                    {match.arcadeSong.type && (
+                                                        <div>
+                                                            <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">类型</div>
+                                                            <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-black text-white ${match.arcadeSong.type === 'DX' ? 'bg-orange-400' : 'bg-blue-400'}`}>
+                                                                {match.arcadeSong.type}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {match.arcadeSong.dateAdded && (
+                                                        <div>
+                                                            <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">日服添加</div>
+                                                            <div className="text-[10px] text-slate-600">{match.arcadeSong.dateAdded}</div>
+                                                        </div>
+                                                    )}
+                                                    {match.arcadeSong.dateIntlAdded && (
+                                                        <div>
+                                                            <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">国际服添加</div>
+                                                            <div className="text-[10px] text-slate-600">{match.arcadeSong.dateIntlAdded}</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Wiki 链接 */}
+                                                {match.arcadeSong.wikiUrl && (
+                                                    <div className="pt-2 border-t border-slate-200">
+                                                        <a
+                                                            href={match.arcadeSong.wikiUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1.5 text-xs text-cyan-600 hover:text-cyan-700 font-bold transition-colors"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                            </svg>
+                                                            查看 Wiki 详情
+                                                        </a>
+                                                    </div>
+                                                )}
+
+                                                {/* 谱面详细信息 */}
+                                                {difficultyList.length > 0 && (
+                                                    <div className="pt-2 border-t border-slate-200">
+                                                        <div className="text-[9px] text-slate-400 uppercase font-bold mb-2">谱面信息</div>
+                                                        <div className="space-y-1.5">
+                                                            {difficultyList.map((chart: ChartInfo, i: number) => (
+                                                                <div key={i} className="flex items-center gap-2 text-xs">
+                                                                    <div className={`w-14 px-1.5 py-0.5 rounded text-[9px] font-bold text-white text-center ${getDifficultyBg(chart.difficulty)}`}>
+                                                                        {chart.difficulty}
+                                                                    </div>
+                                                                    <div className="flex-1 flex items-center gap-3">
+                                                                        <span className="font-bold text-slate-700 tabular-nums">Lv.{chart.level}</span>
+                                                                        {chart.ds && chart.ds > 0 && (
+                                                                            <span className="text-slate-400 tabular-nums">定数 {typeof chart.ds === 'number' ? chart.ds.toFixed(1) : chart.ds}</span>
+                                                                        )}
+                                                                        {chart.notes && chart.notes > 0 && (
+                                                                            <span className="text-slate-400 tabular-nums ml-auto">{chart.notes} notes</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
                                         {/* 跨游戏收录 */}
                                         <div>
                                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">跨游戏收录</div>
@@ -424,11 +542,21 @@ export default function SongModal({ match, onClose }: SongModalProps) {
                                                             <div key={gId} className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${isCurrentGame ? 'bg-cyan-50 ring-1 ring-cyan-200' : 'bg-slate-50'}`}>
                                                                 <img src={gConf.logoUrl} alt={gConf.name} className="h-6 w-auto object-contain flex-shrink-0" />
                                                                 <div className="min-w-0 flex-1">
-                                                                    <div className="text-xs font-bold text-slate-700 truncate">
-                                                                        {info.song?.title || match.arcadeSong.title}
-                                                                        {isCurrentGame && <span className="ml-1.5 text-[9px] text-cyan-500 font-black">当前</span>}
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-xs font-bold text-slate-700 truncate">
+                                                                            {info.song?.title || match.arcadeSong.title}
+                                                                        </span>
+                                                                        {isCurrentGame && <span className="text-[9px] text-cyan-500 font-black flex-shrink-0">当前</span>}
                                                                     </div>
-                                                                    <div className="text-[10px] text-slate-400 truncate">{info.song?.artist || ''}</div>
+                                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                                        <span className="text-[9px] text-slate-500 font-bold">{gConf.name}</span>
+                                                                        {info.song?.artist && (
+                                                                            <>
+                                                                                <span className="text-slate-300">·</span>
+                                                                                <span className="text-[9px] text-slate-400 truncate">{info.song.artist}</span>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                                 {info.song?.levels && (
                                                                     <div className="flex gap-0.5 flex-shrink-0">
@@ -460,6 +588,16 @@ export default function SongModal({ match, onClose }: SongModalProps) {
                             <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                                 <Headphones size={11} />
                                 <span className="truncate">原曲来源: {arcadeSourceInfo}</span>
+                            </div>
+                        )}
+
+                        {/* VIP 状态提示 */}
+                        {((activeSource === 'arcade' && arcadeVipInfo.isVip) || (activeSource === 'user' && userVipInfo.isVip)) && (
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded-lg">
+                                <div className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                                <span className="text-[10px] font-bold text-amber-600">
+                                    VIP 歌曲，仅可预览 {activeSource === 'arcade' ? arcadeVipInfo.previewDuration : userVipInfo.previewDuration} 秒
+                                </span>
                             </div>
                         )}
 

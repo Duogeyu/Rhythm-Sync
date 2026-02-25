@@ -5,8 +5,6 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
-const { Worker } = require('worker_threads');
-const { normalizeTitle } = require('./utils');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -41,12 +39,11 @@ function sanitizeInput(input) {
     return sanitized.trim();
 }
 
-const URL_PATTERN = /https?:\/\/[^\s<>"'()（）\[\]【】]+/gi;
-
 // 从混合文本中提取 URL
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
-    const matches = text.match(URL_PATTERN);
+    const urlPattern = /https?:\/\/[^\s<>"'()（）\[\]【】]+/gi;
+    const matches = text.match(urlPattern);
     return matches ? matches[0] : null;
 }
 
@@ -221,14 +218,25 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// ============== 临时密码保护 ==============
-const TEMP_PASSWORD = '114514';
+// ============== 环境变量配置 ==============
+const APP_ACCESS_PASSWORD = process.env.APP_ACCESS_PASSWORD || '';
+const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || '';
+const SILICONFLOW_API_URL = process.env.SILICONFLOW_API_URL || 'https://api.siliconflow.cn/v1/chat/completions';
+const SILICONFLOW_MODEL = process.env.SILICONFLOW_MODEL || 'Pro/deepseek-ai/DeepSeek-V3';
+
+if (!APP_ACCESS_PASSWORD) {
+    console.warn('[CONFIG] 未设置 APP_ACCESS_PASSWORD，访问验证接口将允许直接通过');
+}
+
+if (!SILICONFLOW_API_KEY) {
+    console.warn('[CONFIG] 未设置 SILICONFLOW_API_KEY，AI 锐评将使用本地降级文案');
+}
 
 app.post('/api/auth/verify', (req, res) => {
     const { password } = req.body;
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     console.log(`[AUTH] ${new Date().toISOString()} - IP: ${clientIp} - 密码验证尝试`);
-    if (password === TEMP_PASSWORD) {
+    if (!APP_ACCESS_PASSWORD || password === APP_ACCESS_PASSWORD) {
         console.log(`[AUTH] ✓ 验证成功 - IP: ${clientIp}`);
         res.json({ success: true });
     } else {
@@ -318,7 +326,7 @@ app.use((req, res, next) => {
 });
 
 // 保存查询日志
-async function saveQueryLog(logData) {
+function saveQueryLog(logData) {
     const { sessionId, clientIp, neteaseUid, playlistId, playlistName, songCount, matchResults, startTime, endTime } = logData;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -344,19 +352,14 @@ async function saveQueryLog(logData) {
         timestamp: new Date().toISOString()
     };
 
-    try {
-        await fs.promises.writeFile(filepath, JSON.stringify(logEntry, null, 2), 'utf-8');
-        console.log(`[LOG] 查询日志已保存: ${filename}`);
-    } catch (error) {
-        console.error(`[LOG] 保存日志失败: ${error.message}`);
-    }
+    fs.writeFileSync(filepath, JSON.stringify(logEntry, null, 2), 'utf-8');
+    console.log(`[LOG] 查询日志已保存: ${filename}`);
 
     return filename;
 }
 
 // ============== 缓存配置 ==============
 const CACHE_DIR = path.join(__dirname, '.cache');
-const IN_MEMORY_SONG_CACHE = new Map(); // gameId -> { timestamp, songs, titleMap, fuse }
 const COVERS_DIR = path.join(__dirname, '.covers');
 const CONFIG_FILE = path.join(__dirname, 'config', 'active-sources.json');
 const COVERS_CONFIG_FILE = path.join(__dirname, 'config', 'covers.json');
@@ -651,27 +654,13 @@ function getCacheFilePath(gameId) {
 }
 
 function readCache(gameId) {
-    // 1. Check in-memory
-    if (IN_MEMORY_SONG_CACHE.has(gameId)) {
-        const cached = IN_MEMORY_SONG_CACHE.get(gameId);
-        if (Date.now() - cached.timestamp < CACHE_DURATION) {
-             console.log(`[缓存] ${gameId} 命中内存缓存 (${cached.songs.length}首)`);
-             return cached.songs;
-        }
-    }
-
     const filePath = getCacheFilePath(gameId);
     if (!fs.existsSync(filePath)) return null;
 
     try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         if (Date.now() - data.timestamp < CACHE_DURATION) {
-            console.log(`[缓存] ${gameId} 命中磁盘缓存 (${data.songs.length}首)`);
-            // Update in-memory cache
-            IN_MEMORY_SONG_CACHE.set(gameId, {
-                timestamp: data.timestamp,
-                songs: data.songs
-            });
+            console.log(`[缓存] ${gameId} 命中缓存 (${data.songs.length}首)`);
             return data.songs;
         }
         console.log(`[缓存] ${gameId} 缓存过期`);
@@ -682,19 +671,11 @@ function readCache(gameId) {
 }
 
 function writeCache(gameId, songs) {
-    const timestamp = Date.now();
     const filePath = getCacheFilePath(gameId);
     fs.writeFileSync(filePath, JSON.stringify({
-        timestamp,
+        timestamp: Date.now(),
         songs
     }));
-
-    // Update in-memory cache
-    IN_MEMORY_SONG_CACHE.set(gameId, {
-        timestamp,
-        songs
-    });
-
     console.log(`[缓存] ${gameId} 已写入缓存 (${songs.length}首)`);
 }
 
@@ -1656,7 +1637,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                 }
             });
             
-            await fs.promises.writeFile(localPath, response.data);
+            fs.writeFileSync(localPath, response.data);
             return localPath;
         } catch (e) {
             if (i === coversConfig.retryCount - 1) {
@@ -1768,7 +1749,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         });
         
         // 保存到本地
-        await fs.promises.writeFile(filePath, response.data);
+        fs.writeFileSync(filePath, response.data);
         console.log(`[封面] 缓存成功 ${gameId}: ${fileName}`);
         
         // 返回图片
@@ -1907,12 +1888,28 @@ app.get('/api/netease/song/:id/url', async (req, res) => {
 
         if (result.body.code === 200 && result.body.data && result.body.data.length > 0) {
             const urlData = result.body.data[0];
+
+            // 检测 VIP 试听限制
+            let isVip = false;
+            let previewDuration = null;
+
+            if (urlData.freeTrialInfo && urlData.freeTrialInfo.end > 0) {
+                isVip = true;
+                previewDuration = urlData.freeTrialInfo.end; // 秒
+            } else if (urlData.fee === 1 && urlData.payed === 0 && urlData.size < 500000) {
+                isVip = true;
+                // 根据文件大小估算试听时长（粗略估计）
+                previewDuration = 30;
+            }
+
             res.json({
                 success: true,
                 url: urlData.url,
                 br: urlData.br,
                 size: urlData.size,
-                type: urlData.type
+                type: urlData.type,
+                isVip,
+                previewDuration
             });
         } else {
             res.json({ success: false, error: '无法获取试听链接（可能需要 VIP）' });
@@ -2187,28 +2184,36 @@ async function searchQQMusic(title, artist) {
 }
 
 // 获取网易云音频URL
-// 获取网易云音频URL（检测 VIP 试听片段，返回 null 让调用方 fallback）
+// 获取网易云音频URL（检测 VIP 试听片段，返回包含VIP状态的对象）
 async function getNeteaseAudioUrl(neteaseId) {
     try {
         const result = await song_url({ id: neteaseId, br: 320000 });
         if (result.body.code !== 200 || !result.body.data?.[0]?.url) return null;
 
         const d = result.body.data[0];
+        let isVip = false;
+        let previewDuration = null;
 
         // 检测 VIP 试听片段：freeTrialInfo 存在且 end > 0 表示只有部分试听
         if (d.freeTrialInfo && d.freeTrialInfo.end > 0) {
-            console.log(`[原曲] 网易云 ${neteaseId} 是 VIP 试听 (${d.freeTrialInfo.end}s)，跳过`);
-            return null; // 返回 null，让调用方走 QQ 音乐备用
+            isVip = true;
+            previewDuration = d.freeTrialInfo.end;
+            console.log(`[原曲] 网易云 ${neteaseId} 是 VIP 试听 (${d.freeTrialInfo.end}s)`);
         }
 
         // fee=1 且 payed=0 也是 VIP 未付费，但有些歌仍能播完整版，用 size 兜底判断
         // 如果文件小于 500KB 大概率是试听片段
-        if (d.fee === 1 && d.payed === 0 && d.size < 500000) {
-            console.log(`[原曲] 网易云 ${neteaseId} 疑似 VIP 短片段 (size=${d.size})，跳过`);
-            return null;
+        else if (d.fee === 1 && d.payed === 0 && d.size < 500000) {
+            isVip = true;
+            previewDuration = 30; // 估算30秒
+            console.log(`[原曲] 网易云 ${neteaseId} 疑似 VIP 短片段 (size=${d.size})`);
         }
 
-        return d.url;
+        return {
+            url: d.url,
+            isVip,
+            previewDuration
+        };
     } catch {
         return null;
     }
@@ -2253,14 +2258,19 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
             let actualSource = cached.source;
 
             // 先尝试 QQ 音乐（无 VIP 限制）
+            let vipInfo = { isVip: false, previewDuration: null };
             if (cached.qqmid) {
                 url = await getQQMusicAudioUrl(cached.qqmid);
                 if (url) actualSource = 'qqmusic';
             }
             // QQ 音乐失败才尝试网易云
             if (!url && cached.neteaseId) {
-                url = await getNeteaseAudioUrl(cached.neteaseId);
-                if (url) actualSource = 'netease';
+                const neteaseResult = await getNeteaseAudioUrl(cached.neteaseId);
+                if (neteaseResult) {
+                    url = neteaseResult.url;
+                    vipInfo = { isVip: neteaseResult.isVip, previewDuration: neteaseResult.previewDuration };
+                    actualSource = 'netease';
+                }
             }
 
             if (url) {
@@ -2269,7 +2279,9 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
                     source: cached.source,
                     matchedTitle: cached.title,
                     matchedArtist: cached.artist,
-                    neteaseId: cached.neteaseId || null
+                    neteaseId: cached.neteaseId || null,
+                    isVip: vipInfo.isVip,
+                    previewDuration: vipInfo.previewDuration
                 });
             }
             return res.json({ success: false, cached: true, error: '音频链接暂不可用' });
@@ -2300,6 +2312,7 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
         // 3. 获取可播放的 URL（QQ 音乐优先，因为没有 VIP 限制）
         let url = null;
         let source = '';
+        let vipInfo = { isVip: false, previewDuration: null };
 
         // 先试 QQ 音乐
         if (qqMatch?.qqmid) {
@@ -2307,10 +2320,15 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
             if (url) { source = 'qqmusic'; cacheData.source = 'qqmusic'; }
         }
 
-        // QQ 音乐失败，试网易云（可能是 VIP 试听，getNeteaseAudioUrl 会自动跳过）
+        // QQ 音乐失败，试网易云（可能是 VIP 试听）
         if (!url && neteaseMatch?.neteaseId) {
-            url = await getNeteaseAudioUrl(neteaseMatch.neteaseId);
-            if (url) { source = 'netease'; cacheData.source = 'netease'; }
+            const neteaseResult = await getNeteaseAudioUrl(neteaseMatch.neteaseId);
+            if (neteaseResult) {
+                url = neteaseResult.url;
+                vipInfo = { isVip: neteaseResult.isVip, previewDuration: neteaseResult.previewDuration };
+                source = 'netease';
+                cacheData.source = 'netease';
+            }
         }
 
         // 4. 缓存结果（不管成不成功都缓存，保存两边的 ID）
@@ -2322,7 +2340,9 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
                 success: true, cached: false, url, source,
                 matchedTitle: cacheData.title,
                 matchedArtist: cacheData.artist,
-                neteaseId: cacheData.neteaseId
+                neteaseId: cacheData.neteaseId,
+                isVip: vipInfo.isVip,
+                previewDuration: vipInfo.previewDuration
             });
         }
 
@@ -2710,7 +2730,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
 
         // 保存查询日志
         const endTime = Date.now();
-        // 异步保存日志，不阻塞响应
         saveQueryLog({
             sessionId,
             clientIp,
@@ -2721,7 +2740,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
             matchResults: matchResultsForLog,
             startTime,
             endTime
-        }).catch(err => console.error('Log save error:', err));
+        });
 
         sendEvent('done', {});
         res.end();
@@ -2758,6 +2777,18 @@ app.post('/api/match-all', async (req, res) => {
 
         const gameDataResults = await Promise.all(gameDataPromises);
 
+        // 辅助函数：标准化标题用于精确匹配
+        const normalizeTitle = (str) => {
+            if (!str) return '';
+            return str.toLowerCase()
+                .replace(/\s+/g, '') // 去除空格
+                .replace(/[！!]/g, '!')
+                .replace(/[？?]/g, '?')
+                .replace(/[（(]/g, '(')
+                .replace(/[）)]/g, ')')
+                .replace(/[－-]/g, '-');
+        };
+
         // 对每个游戏进行匹配（并行处理）
         const matchPromises = gameDataResults.map(async ({ gameId, songs, error }) => {
             if (error) {
@@ -2771,50 +2802,67 @@ app.post('/api/match-all', async (req, res) => {
                 };
             }
 
-            // 使用 Worker Thread 进行匹配
-            return new Promise((resolve, reject) => {
-                const worker = new Worker(path.join(__dirname, 'match_worker.js'), {
-                    workerData: {
-                        songs,
-                        userSongs,
-                        gameId,
-                        config: GAME_CONFIG[gameId]
-                    }
-                });
-
-                worker.on('message', (message) => {
-                    if (message.success) {
-                        resolve(message.result);
-                    } else {
-                        resolve({
-                            [gameId]: {
-                                error: message.error,
-                                config: GAME_CONFIG[gameId],
-                                stats: null,
-                                matches: []
-                            }
-                        });
-                    }
-                });
-
-                worker.on('error', (err) => {
-                    console.error(`Worker error for ${gameId}:`, err);
-                    resolve({
-                        [gameId]: {
-                            error: err.message,
-                            config: GAME_CONFIG[gameId],
-                            stats: null,
-                            matches: []
-                        }
-                    });
-                });
-
-                worker.on('exit', (code) => {
-                    if (code !== 0) {
-                        console.error(`Worker stopped with exit code ${code}`);
-                    }
-                });
+            // 1. 建立精确匹配索引 (Map)
+            const titleMap = new Map();
+            songs.forEach(s => {
+                titleMap.set(normalizeTitle(s.title), s);
+                // 尝试保留原始标题作为 key 备用
+                titleMap.set(s.title, s);
             });
+
+            // 2. 建立 Fuse.js 模糊匹配索引
+            const fuse = new Fuse(songs, {
+                keys: ['title', 'artist'],
+                threshold: 0.3,
+                includeScore: true
+            });
+
+            const matches = [];
+            const matchedUserSongIds = new Set();
+
+            for (const userSong of userSongs) {
+                // 优化：先尝试精确匹配
+                const normalizedParams = normalizeTitle(userSong.name);
+
+                if (titleMap.has(normalizedParams)) {
+                    matches.push({
+                        userSong,
+                        arcadeSong: titleMap.get(normalizedParams),
+                        score: 1.0,
+                        matchType: 'exact'
+                    });
+                    matchedUserSongIds.add(userSong.id);
+                    continue; // 命中精确匹配，跳过 Fuse
+                }
+
+                // 未命中，使用 Fuse 模糊匹配
+                const fuseResults = fuse.search(userSong.name);
+
+                if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
+                    matches.push({
+                        userSong,
+                        arcadeSong: fuseResults[0].item,
+                        score: 1 - fuseResults[0].score,
+                        matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
+                    });
+                    matchedUserSongIds.add(userSong.id);
+                }
+            }
+
+            const stats = {
+                totalUserSongs: userSongs.length,
+                totalArcadeSongs: songs.length,
+                matchedCount: matches.length,
+                overlapPercentage: Math.round((matches.length / userSongs.length) * 100)
+            };
+
+            return {
+                [gameId]: {
+                    config: GAME_CONFIG[gameId],
+                    stats,
+                    matches: matches.sort((a, b) => b.score - a.score)
+                }
+            };
         });
 
         const matchResults = await Promise.all(matchPromises);
@@ -3181,16 +3229,15 @@ app.get('/api/random', async (req, res) => {
         }
         
         // 获取歌曲
-        const songsResults = await Promise.all(targetGames.map(async (gameId) => {
+        let allSongs = [];
+        for (const gameId of targetGames) {
             try {
-                return await fetchGameSongs(gameId);
+                const songs = await fetchGameSongs(gameId);
+                allSongs = allSongs.concat(songs);
             } catch (e) {
                 console.warn(`[随机] 获取 ${gameId} 失败: ${e.message}`);
-                return [];
             }
-        }));
-
-        let allSongs = songsResults.flat();
+        }
         
         if (allSongs.length === 0) {
             return res.status(500).json({ success: false, error: '无法获取歌曲数据' });
@@ -3529,7 +3576,7 @@ app.get('/api/check', async (req, res) => {
         const matches = {};
         let foundInGames = 0;
         
-        const checkPromises = Object.entries(GAME_CONFIG).map(async ([gameId, config]) => {
+        for (const [gameId, config] of Object.entries(GAME_CONFIG)) {
             try {
                 const songs = await fetchGameSongs(gameId);
                 
@@ -3564,37 +3611,25 @@ app.get('/api/check', async (req, res) => {
                 }
                 
                 if (match) {
-                    return {
-                        gameId,
-                        data: {
-                            gameName: config.name,
-                            found: true,
-                            song: {
-                                id: match.id,
-                                title: match.title,
-                                artist: match.artist,
-                                category: match.category,
-                                coverUrl: match.coverUrl,
-                                charts: match.charts || [],
-                                levels: match.levels || []
-                            }
+                    matches[gameId] = {
+                        gameName: config.name,
+                        found: true,
+                        song: {
+                            id: match.id,
+                            title: match.title,
+                            artist: match.artist,
+                            category: match.category,
+                            coverUrl: match.coverUrl,
+                            charts: match.charts || [],
+                            levels: match.levels || []
                         }
                     };
+                    foundInGames++;
                 }
             } catch (e) {
                 console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
             }
-            return null;
-        });
-
-        const results = await Promise.all(checkPromises);
-
-        results.forEach(result => {
-            if (result) {
-                matches[result.gameId] = result.data;
-                foundInGames++;
-            }
-        });
+        }
         
         res.json({
             success: true,
@@ -3932,38 +3967,17 @@ app.post('/api/bot/query', async (req, res) => {
                 const gameSongs = await fetchGameSongs(gameId);
                 
                 // 建立索引
-                let titleMap, fuse;
+                const titleMap = new Map();
+                gameSongs.forEach(s => {
+                    titleMap.set(normalizeTitle(s.title), s);
+                    titleMap.set(s.title, s);
+                });
                 
-                // 尝试使用缓存的索引
-                const cachedEntry = IN_MEMORY_SONG_CACHE.get(gameId);
-
-                // 只有当内存缓存中的 songs 对象与当前的 gameSongs 对象相同时，才复用索引
-                // 因为 readCache 已经确保了如果我们命中内存缓存，或者刚从磁盘读取并更新了内存缓存，
-                // fetchGameSongs 返回的 gameSongs 就是内存缓存中的那个对象。
-                if (cachedEntry && cachedEntry.songs === gameSongs && cachedEntry.fuse) {
-                    titleMap = cachedEntry.titleMap;
-                    fuse = cachedEntry.fuse;
-                    // console.log(`[索引] ${gameId} 复用缓存索引`);
-                } else {
-                    titleMap = new Map();
-                    gameSongs.forEach(s => {
-                        titleMap.set(normalizeTitle(s.title), s);
-                        titleMap.set(s.title, s);
-                    });
-
-                    fuse = new Fuse(gameSongs, {
-                        keys: ['title', 'artist'],
-                        threshold: 0.3,
-                        includeScore: true
-                    });
-
-                    // 如果存在对应的缓存条目（说明 songs 对象一致），则保存索引以供复用
-                    if (cachedEntry && cachedEntry.songs === gameSongs) {
-                        cachedEntry.titleMap = titleMap;
-                        cachedEntry.fuse = fuse;
-                        console.log(`[索引] ${gameId} 建立并缓存新索引`);
-                    }
-                }
+                const fuse = new Fuse(gameSongs, {
+                    keys: ['title', 'artist'],
+                    threshold: 0.3,
+                    includeScore: true
+                });
                 
                 const matches = [];
                 
@@ -4801,9 +4815,6 @@ setInterval(cleanupExpiredShares, 60 * 60 * 1000);
 cleanupExpiredShares(); // 启动时也清理一次
 
 // ============== AI 锐评 API ==============
-const SILICONFLOW_API_KEY = 'sk-wjbvydcghiheeexvohwjhvchsxzxxsoiwnaqsyffgjerankv';
-const SILICONFLOW_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
-const SILICONFLOW_MODEL = 'Pro/deepseek-ai/DeepSeek-V3';
 
 // AI API 速率限制
 const AI_RATE_LIMIT = {
@@ -4907,6 +4918,14 @@ async function generateAIComment(playlistName, trackCount, coveragePercent, game
         const time = new Date().toISOString();
         fs.appendFileSync(path.join(__dirname, 'ai_debug.log'), `[${time}] ${msg}\n`);
     };
+
+    if (!SILICONFLOW_API_KEY) {
+        return {
+            comment: FALLBACK_COMMENTS[level],
+            title: levelNames[level],
+            songs: []
+        };
+    }
 
     try {
         logDebug(`Requesting AI: ${SILICONFLOW_MODEL}`);
