@@ -46,7 +46,7 @@ function getResultIdFromHash(): string | null {
 // Main App
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem('rhythm_overlap_auth') === 'verified';
+    return localStorage.getItem('rhythm_sync_auth') === 'verified';
   });
   const [step, setStep] = useState<'input' | 'playlist' | 'result'>('input');
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
@@ -197,7 +197,7 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        localStorage.setItem('rhythm_overlap_auth', 'verified');
+        localStorage.setItem('rhythm_sync_auth', 'verified');
         setIsAuthenticated(true);
       } else {
         setAuthError(data.error || '密码错误');

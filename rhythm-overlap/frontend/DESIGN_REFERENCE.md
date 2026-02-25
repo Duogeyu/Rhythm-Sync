@@ -1,4 +1,4 @@
-# Rhythm Overlap 美术设计参考文档
+# Rhythm_Sync 美术设计参考文档
 
 > 基于用户偏好的 **maimai DX 国际版 PRiSM** 和 **CHUNITHM** 风格调研
 

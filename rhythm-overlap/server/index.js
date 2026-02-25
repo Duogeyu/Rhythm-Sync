@@ -47,6 +47,22 @@ function extractUrlFromText(text) {
     return matches ? matches[0] : null;
 }
 
+function getPublicWebBaseUrl(req) {
+    const envUrl = (process.env.PUBLIC_WEB_URL || '').trim();
+    if (envUrl) {
+        return envUrl.replace(/\/+$/, '');
+    }
+
+    if (req) {
+        const forwardedProto = req.headers['x-forwarded-proto'];
+        const protocol = forwardedProto ? String(forwardedProto).split(',')[0].trim() : (req.protocol || 'http');
+        const host = req.get('host') || 'localhost:3002';
+        return `${protocol}://${host.replace(':3002', ':5173')}`.replace(/\/+$/, '');
+    }
+
+    return 'http://localhost:5173';
+}
+
 // ============== 多平台链接解析器 ==============
 const PLATFORM_PATTERNS = {
     // 网易云音乐
@@ -2917,7 +2933,7 @@ setInterval(() => {
 /**
  * 生成单曲分享图
  */
-async function generateSongImage(song, gameConfig) {
+async function generateSongImage(song, gameConfig, websiteUrl) {
     const escapeXml = (str) => {
         if (!str) return '';
         return String(str).replace(/&/g, '&amp;')
@@ -2974,10 +2990,10 @@ async function generateSongImage(song, gameConfig) {
     }
 
     // 生成二维码 (指向网站首页)
-    const websiteUrl = 'http://home.vrcc.cc:5188';
+    const qrTargetUrl = websiteUrl || 'http://localhost:5173';
     let qrCodeBase64 = null;
     try {
-        qrCodeBase64 = await QRCode.toDataURL(websiteUrl, {
+        qrCodeBase64 = await QRCode.toDataURL(qrTargetUrl, {
             margin: 1,
             color: {
                 dark: '#334155',
@@ -3304,7 +3320,8 @@ app.get('/api/random', async (req, res) => {
         let songImageId = null;
         if (generateImg && resultCount === 1) {
             try {
-                const { imagePath, songId } = await generateSongImage(result[0], GAME_CONFIG[result[0].gameId]);
+                const websiteUrl = getPublicWebBaseUrl(req);
+                const { imagePath, songId } = await generateSongImage(result[0], GAME_CONFIG[result[0].gameId], websiteUrl);
                 songImageId = songId;
                 imageUrl = `http://${req.get('host')}/api/random/image/${songId}`;
             } catch (e) {
@@ -3651,7 +3668,7 @@ app.get('/api/check', async (req, res) => {
  */
 app.get('/api/docs', (req, res) => {
     res.json({
-        name: 'Rhythm Overlap API',
+        name: 'Rhythm_Sync API',
         version: '1.0.0',
         description: '音游歌单匹配工具 API，支持 maimai、CHUNITHM、ONGEKI、太鼓の達人 等游戏',
         endpoints: {

@@ -64,7 +64,7 @@ export const GAMES = [
         color: 'from-red-500 to-red-700',
         ringColor: '#ef4444',
         logoUrl: '/logos/taiko.png',
-        cabinetUrl: '/logos/cabinets/taiko-cn-cabinet.jpeg'
+        cabinetUrl: '/logos/cabinets/taiko-cn-cabinet.png'
     },
 ];
 

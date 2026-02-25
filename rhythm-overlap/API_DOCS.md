@@ -1,4 +1,4 @@
-# Rhythm Overlap API 文档
+# Rhythm_Sync API 文档
 
 音游歌单匹配工具 API，支持 maimai、CHUNITHM、ONGEKI、太鼓の達人 等游戏。
 
