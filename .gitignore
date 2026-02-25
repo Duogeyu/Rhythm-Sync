@@ -1,11 +1,31 @@
+# Dependencies
+node_modules/
+
 # Environment files
 .env
 .env.*
 !.env.example
+server/.env
+server/.env.*
+!server/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
 
-# Runtime and debug artifacts
+# Cache & Generated Files
+server/.cache/
+server/.covers/
+server/.shares/
+server/.songs/
+server/.logs/
+server/.bot_results/
+server/.song_images/
+frontend/dist/
+
+# Logs
 *.log
 *.tmp
+server/ai_debug.log
 
 # Local temporary data files
 temp_*.json
@@ -13,8 +33,8 @@ has_data.json
 stats.txt
 tatus -s
 
-# Node
-node_modules/
+# Test images
+test_*.png
 
 # OS / Editor
 .DS_Store
