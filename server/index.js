@@ -18,6 +18,8 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+const { levenshteinDistance } = require('./utils');
+
 // ============== 安全过滤函数 ==============
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
@@ -2468,35 +2470,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[（(]/g, '(')
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
