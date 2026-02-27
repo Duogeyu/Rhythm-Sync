@@ -1728,7 +1728,21 @@ function getCoverUrl(gameId, originalUrl, req) {
 // 封面代理 API - 按需下载并缓存封面
 app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     const { gameId, fileName } = req.params;
+
+    // 安全检查：防止路径遍历
+    if (!gameId || !fileName ||
+        gameId.includes('..') || fileName.includes('..') ||
+        gameId.includes('/') || fileName.includes('/')) {
+        return res.status(400).json({ error: '无效的请求参数' });
+    }
+
     const filePath = path.join(COVERS_DIR, gameId, fileName);
+
+    // 额外的安全检查：确保 resolved path 在 COVERS_DIR 内
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(path.resolve(COVERS_DIR))) {
+        return res.status(403).json({ error: '禁止访问' });
+    }
     
     // 如果已缓存，直接返回
     if (fs.existsSync(filePath)) {
