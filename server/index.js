@@ -669,12 +669,12 @@ function getCacheFilePath(gameId) {
     return path.join(CACHE_DIR, `${gameId}.json`);
 }
 
-function readCache(gameId) {
+async function readCache(gameId) {
     const filePath = getCacheFilePath(gameId);
-    if (!fs.existsSync(filePath)) return null;
-
     try {
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        await fs.promises.access(filePath);
+        const content = await fs.promises.readFile(filePath, 'utf8');
+        const data = JSON.parse(content);
         if (Date.now() - data.timestamp < CACHE_DURATION) {
             console.log(`[缓存] ${gameId} 命中缓存 (${data.songs.length}首)`);
             return data.songs;
@@ -686,9 +686,9 @@ function readCache(gameId) {
     }
 }
 
-function writeCache(gameId, songs) {
+async function writeCache(gameId, songs) {
     const filePath = getCacheFilePath(gameId);
-    fs.writeFileSync(filePath, JSON.stringify({
+    await fs.promises.writeFile(filePath, JSON.stringify({
         timestamp: Date.now(),
         songs
     }));
@@ -1053,7 +1053,7 @@ function normalizeSongs(data, type, gameId) {
 
 async function fetchGameSongs(gameId) {
     // 先检查缓存
-    const cached = readCache(gameId);
+    const cached = await readCache(gameId);
     if (cached) return cached;
 
     const config = GAME_CONFIG[gameId];
@@ -1074,7 +1074,7 @@ async function fetchGameSongs(gameId) {
             console.log(`[获取] ${gameId}: 成功 (${songs.length}首)`);
 
             // 写入缓存
-            writeCache(gameId, songs);
+            await writeCache(gameId, songs);
             return songs;
         } catch (error) {
             console.error(`[获取] ${gameId} 失败:`, error.message);
