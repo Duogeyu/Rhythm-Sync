@@ -2472,31 +2472,46 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
 
         // Levenshtein 编辑距离
         const levenshteinDistance = (s1, s2) => {
+            if (s1 === s2) return 0;
             if (s1.length === 0) return s2.length;
             if (s2.length === 0) return s1.length;
             
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
+            // Ensure s1 is the shorter string to minimize array size
+            if (s1.length > s2.length) {
+                let temp = s1;
+                s1 = s2;
+                s2 = temp;
             }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
+
+            const s1Len = s1.length;
+            const s2Len = s2.length;
+            // Use a single 1D Uint16Array instead of an O(N*M) 2D matrix
+            let row = new Uint16Array(s1Len + 1);
+
+            for (let i = 0; i <= s1Len; i++) {
+                row[i] = i;
             }
             
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
+            for (let i = 0; i < s2Len; i++) {
+                const s2Char = s2.charCodeAt(i);
+                let prevDiagonal = row[0];
+                row[0] = i + 1;
+
+                for (let j = 0; j < s1Len; j++) {
+                    const prevRowJ = row[j + 1];
+                    if (s2Char === s1.charCodeAt(j)) {
+                        row[j + 1] = prevDiagonal;
                     } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
+                        const a = prevDiagonal; // 替换
+                        const b = row[j + 1];   // 插入
+                        const c = row[j];       // 删除
+                        // Inlined Math.min for performance
+                        row[j + 1] = (a < b ? (a < c ? a : c) : (b < c ? b : c)) + 1;
                     }
+                    prevDiagonal = prevRowJ;
                 }
             }
-            return matrix[s2.length][s1.length];
+            return row[s1Len];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
