@@ -2470,33 +2470,36 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[－-]/g, '-');
         };
 
-        // Levenshtein 编辑距离
+        // Levenshtein 编辑距离 (Optimized O(min(M,N)) space)
         const levenshteinDistance = (s1, s2) => {
+            if (s1 === s2) return 0;
             if (s1.length === 0) return s2.length;
             if (s2.length === 0) return s1.length;
             
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
+            let v0 = new Uint16Array(s1.length + 1);
+            let v1 = new Uint16Array(s1.length + 1);
+
+            for (let i = 0; i <= s1.length; i++) {
+                v0[i] = i;
             }
             
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
+            for (let i = 0; i < s2.length; i++) {
+                v1[0] = i + 1;
+                for (let j = 0; j < s1.length; j++) {
+                    const cost = (s1[j] === s2[i]) ? 0 : 1;
+                    v1[j + 1] = Math.min(
+                        v1[j] + 1,        // Insertion
+                        v0[j + 1] + 1,    // Deletion
+                        v0[j] + cost      // Substitution
+                    );
                 }
+                // Swap v0 and v1
+                let temp = v0;
+                v0 = v1;
+                v1 = temp;
             }
-            return matrix[s2.length][s1.length];
+
+            return v0[s1.length]; // since v0 and v1 were swapped at the end
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {

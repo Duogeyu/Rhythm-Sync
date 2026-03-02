@@ -1,0 +1,3 @@
+## 2025-03-05 - [Optimize Levenshtein Distance memory allocation]
+**Learning:** The previous naive implementation of `levenshteinDistance` in `server/index.js` generated an M*N matrix every time it was called. Given that this function is heavily used in a loop for matching user songs to arcade songs during fuzzy searches, it was a hidden memory/GC sink.
+**Action:** Replace 2D memory arrays inside tightly-looped sequence similarity algorithms with minimal O(M) or O(min(M,N)) memory solutions, typically involving two 1D arrays matching the string dimensions. Also, remember to swap 1D arrays properly with simple assignment pointers (`let temp = v0; v0 = v1; v1 = temp;`) rather than element-by-element assignment mapping for even greater optimization.
