@@ -1,0 +1,3 @@
+## 2024-05-15 - Optimize Levenshtein Distance for Lower GC Pressure
+**Learning:** The previous string matching algorithm used an $O(N \times M)$ memory matrix (`Array`) to calculate the Levenshtein distance. In fuzzy matching contexts with many songs, this generated immense Garbage Collection (GC) pressure because thousands of 2D arrays were allocated and immediately discarded, causing latency spikes.
+**Action:** Replace $O(N \times M)$ 2D arrays with an $O(\min(N, M))$ space complexity approach using a single 1D `Uint16Array` for row tracking. `Uint16Array` operations also benefit from typed arrays speed.
