@@ -2471,32 +2471,49 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         };
 
         // Levenshtein 编辑距离
+        // ⚡ Bolt Optimization: Replace O(N * M) 2D array with O(min(N, M)) 1D Uint16Array.
+        // This dramatically reduces Garbage Collection pressure during fuzzy matching.
         const levenshteinDistance = (s1, s2) => {
+            if (s1 === s2) return 0;
             if (s1.length === 0) return s2.length;
             if (s2.length === 0) return s1.length;
             
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
+            if (s1.length > s2.length) {
+                const temp = s1;
+                s1 = s2;
+                s2 = temp;
             }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
+
+            const len1 = s1.length;
+            const len2 = s2.length;
+
+            const row = new Uint16Array(len1 + 1);
+
+            for (let i = 0; i <= len1; i++) {
+                row[i] = i;
             }
             
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
+            for (let i = 1; i <= len2; i++) {
+                let prevDiagonal = row[0];
+                row[0] = i;
+
+                const char2 = s2.charCodeAt(i - 1);
+                for (let j = 1; j <= len1; j++) {
+                    const temp = row[j];
+                    if (s1.charCodeAt(j - 1) === char2) {
+                        row[j] = prevDiagonal;
                     } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
+                        row[j] = Math.min(
+                            row[j - 1] + 1,     // Insert
+                            row[j] + 1,         // Delete
+                            prevDiagonal + 1    // Replace
                         );
                     }
+                    prevDiagonal = temp;
                 }
             }
-            return matrix[s2.length][s1.length];
+
+            return row[len1];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
