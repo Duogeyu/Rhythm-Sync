@@ -1,0 +1,4 @@
+## 2024-05-18 - Path Traversal Vulnerability Mitigation
+**Vulnerability:** Multiple endpoints exposed local filesystem directories (`.covers`, `.shares`, `.bot_results`, `.song_images`) to Directory Traversal attacks, allowing an attacker to read arbitrary files from the server via parameters like `../../../../etc/passwd`.
+**Learning:** `fs.existsSync` and `res.sendFile` combined with `path.join` passing raw user-input string params (`req.params`) are an extremely common source of LFI (Local File Inclusion) or Directory Traversal vulnerabilities in Express apps.
+**Prevention:** Implement strict input sanitization on filename endpoints. I added a `isSafeFilename` utility to enforce that the filename prevents paths traversal (e.g., blocking `..`, `/`, `\`) and strictly enforces a safe regex format for IDs and expected filenames.

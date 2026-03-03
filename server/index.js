@@ -40,6 +40,17 @@ function sanitizeInput(input) {
 }
 
 // 从混合文本中提取 URL
+// 验证文件名安全性 (防止路径穿越)
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // 阻止包含路径穿越和目录分隔符的字符
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        return false;
+    }
+    // 只允许字母、数字、下划线、短横线和点
+    return /^[a-zA-Z0-9_\-\.]+$/.test(filename);
+}
+
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
     const urlPattern = /https?:\/\/[^\s<>"'()（）\[\]【】]+/gi;
@@ -1728,6 +1739,12 @@ function getCoverUrl(gameId, originalUrl, req) {
 // 封面代理 API - 按需下载并缓存封面
 app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     const { gameId, fileName } = req.params;
+
+    // 安全校验，防止目录遍历
+    if (!isSafeFilename(gameId) || !isSafeFilename(fileName)) {
+        return res.status(400).json({ error: '非法的文件名或游戏ID' });
+    }
+
     const filePath = path.join(COVERS_DIR, gameId, fileName);
     
     // 如果已缓存，直接返回
@@ -3356,6 +3373,12 @@ app.get('/api/random', async (req, res) => {
  */
 app.get('/api/random/image/:id', (req, res) => {
     const { id } = req.params;
+
+    // 安全校验
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: '非法的图片ID' });
+    }
+
     const imagePath = path.join(SONG_IMAGE_DIR, `${id}.png`);
     
     if (!fs.existsSync(imagePath)) {
@@ -4160,6 +4183,12 @@ app.post('/api/bot/query', async (req, res) => {
 app.get('/api/bot/result/:id', (req, res) => {
     try {
         const { id } = req.params;
+
+        // 安全校验
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ success: false, error: '非法的查询ID' });
+        }
+
         const filePath = path.join(BOT_RESULT_DIR, `${id}.json`);
         
         if (!fs.existsSync(filePath)) {
@@ -4186,6 +4215,12 @@ app.get('/api/bot/result/:id', (req, res) => {
 app.get('/api/bot/result/:id/image', async (req, res) => {
     try {
         const { id } = req.params;
+
+        // 安全校验
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ error: '非法的图片ID' });
+        }
+
         const imagePath = path.join(BOT_RESULT_DIR, 'images', `${id}.png`);
         
         if (!fs.existsSync(imagePath)) {
@@ -5203,6 +5238,11 @@ async function generateShareImage(shareId) {
 app.get('/api/share/:id/image', async (req, res) => {
     const { id } = req.params;
     
+    // 安全校验
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: '非法的分享ID' });
+    }
+
     // 检查分享是否存在
     const sharePath = path.join(SHARE_DATA_DIR, `${id}.json`);
     if (!fs.existsSync(sharePath)) {
@@ -5293,6 +5333,12 @@ app.post('/api/share/create', (req, res) => {
 app.get('/api/share/:shareId', (req, res) => {
     try {
         const { shareId } = req.params;
+
+        // 安全校验
+        if (!isSafeFilename(shareId)) {
+            return res.status(400).json({ success: false, error: 'invalid_id', message: '非法的分享ID' });
+        }
+
         const filePath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
         
         if (!fs.existsSync(filePath)) {
