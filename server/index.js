@@ -2826,12 +2826,12 @@ app.post('/api/match-all', async (req, res) => {
                 titleMap.set(s.title, s);
             });
 
-            // 2. 建立 Fuse.js 模糊匹配索引
-            const fuse = new Fuse(songs, {
-                keys: ['title', 'artist'],
-                threshold: 0.3,
-                includeScore: true
-            });
+            // 2. 建立 fuzzysort 模糊匹配索引 (比 Fuse.js 快一个数量级)
+            const preparedSongs = songs.map(s => ({
+                ...s,
+                // 联合标题和艺术家进行搜索
+                preparedTitle: fuzzysort.prepare((s.title || '') + ' ' + (s.artist || ''))
+            }));
 
             const matches = [];
             const matchedUserSongIds = new Set();
@@ -2848,20 +2848,31 @@ app.post('/api/match-all', async (req, res) => {
                         matchType: 'exact'
                     });
                     matchedUserSongIds.add(userSong.id);
-                    continue; // 命中精确匹配，跳过 Fuse
+                    continue; // 命中精确匹配，跳过模糊匹配
                 }
 
-                // 未命中，使用 Fuse 模糊匹配
-                const fuseResults = fuse.search(userSong.name);
+                // 未命中，使用 fuzzysort 模糊匹配
+                const fuzzyResults = fuzzysort.go(userSong.name, preparedSongs, {
+                    key: 'preparedTitle',
+                    limit: 1,
+                    threshold: -1000 // 允许一定的模糊度
+                });
 
-                if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-                    matches.push({
-                        userSong,
-                        arcadeSong: fuseResults[0].item,
-                        score: 1 - fuseResults[0].score,
-                        matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-                    });
-                    matchedUserSongIds.add(userSong.id);
+                if (fuzzyResults.length > 0) {
+                    // fuzzysort 分数是负数，越接近 0 越好。映射到 0-1 范围，以匹配原有 Fuse.js 逻辑 (1.0 最好)
+                    // -1000 阈值下，这里计算出的分数如果低于 0 截断为 0
+                    const score = Math.max(0, (fuzzyResults[0].score + 1000) / 1000);
+
+                    // 分数高于 0.7 视为匹配成功，匹配原先 Fuse score < 0.3
+                    if (score > 0.7) {
+                        matches.push({
+                            userSong,
+                            arcadeSong: fuzzyResults[0].obj,
+                            score: score,
+                            matchType: score > 0.9 ? 'exact' : 'fuzzy'
+                        });
+                        matchedUserSongIds.add(userSong.id);
+                    }
                 }
             }
 
