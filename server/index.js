@@ -19,6 +19,17 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // 阻止目录遍历尝试
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        return false;
+    }
+    // 仅允许字母、数字、下划线、点和连字符
+    const safePattern = /^[a-zA-Z0-9_.-]+$/;
+    return safePattern.test(filename);
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1728,6 +1739,11 @@ function getCoverUrl(gameId, originalUrl, req) {
 // 封面代理 API - 按需下载并缓存封面
 app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     const { gameId, fileName } = req.params;
+
+    if (!isSafeFilename(gameId) || !isSafeFilename(fileName)) {
+        return res.status(400).json({ error: '无效的文件名或游戏ID' });
+    }
+
     const filePath = path.join(COVERS_DIR, gameId, fileName);
     
     // 如果已缓存，直接返回
@@ -2257,6 +2273,11 @@ async function getQQMusicAudioUrl(songmid) {
 app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
     try {
         const { gameId, songId } = req.params;
+
+        if (!isSafeFilename(gameId) || !isSafeFilename(songId)) {
+            return res.status(400).json({ success: false, error: '无效的参数' });
+        }
+
         const { title, artist } = req.query;
         const cacheKey = `${gameId}_${songId}`;
 
@@ -3356,6 +3377,11 @@ app.get('/api/random', async (req, res) => {
  */
 app.get('/api/random/image/:id', (req, res) => {
     const { id } = req.params;
+
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: '无效的图片ID' });
+    }
+
     const imagePath = path.join(SONG_IMAGE_DIR, `${id}.png`);
     
     if (!fs.existsSync(imagePath)) {
@@ -4160,6 +4186,11 @@ app.post('/api/bot/query', async (req, res) => {
 app.get('/api/bot/result/:id', (req, res) => {
     try {
         const { id } = req.params;
+
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ success: false, error: '无效的ID' });
+        }
+
         const filePath = path.join(BOT_RESULT_DIR, `${id}.json`);
         
         if (!fs.existsSync(filePath)) {
@@ -4186,6 +4217,11 @@ app.get('/api/bot/result/:id', (req, res) => {
 app.get('/api/bot/result/:id/image', async (req, res) => {
     try {
         const { id } = req.params;
+
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ error: '无效的图片ID' });
+        }
+
         const imagePath = path.join(BOT_RESULT_DIR, 'images', `${id}.png`);
         
         if (!fs.existsSync(imagePath)) {
@@ -5203,6 +5239,10 @@ async function generateShareImage(shareId) {
 app.get('/api/share/:id/image', async (req, res) => {
     const { id } = req.params;
     
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: '无效的分享ID' });
+    }
+
     // 检查分享是否存在
     const sharePath = path.join(SHARE_DATA_DIR, `${id}.json`);
     if (!fs.existsSync(sharePath)) {
@@ -5293,6 +5333,11 @@ app.post('/api/share/create', (req, res) => {
 app.get('/api/share/:shareId', (req, res) => {
     try {
         const { shareId } = req.params;
+
+        if (!isSafeFilename(shareId)) {
+            return res.status(400).json({ success: false, error: '无效的分享ID' });
+        }
+
         const filePath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
         
         if (!fs.existsSync(filePath)) {
