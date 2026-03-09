@@ -2370,6 +2370,78 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
     }
 });
 
+// 预分配数组以复用内存，降低垃圾回收压力（适用于 levenshteinDistance）
+const MAX_LEV_LEN = 256;
+const levCache = new Uint16Array(MAX_LEV_LEN);
+
+// 高效的 Levenshtein 编辑距离算法，O(min(M, N)) 空间复杂度
+function levenshteinDistance(s1, s2) {
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    let len1 = s1.length;
+    let len2 = s2.length;
+
+    if (len1 > len2) {
+        const temp = s1;
+        s1 = s2;
+        s2 = temp;
+        len1 = s1.length;
+        len2 = s2.length;
+    }
+
+    if (len1 >= MAX_LEV_LEN) {
+        // Fallback for very long strings
+        let prevRow = new Uint16Array(len1 + 1);
+        for (let i = 0; i <= len1; i++) prevRow[i] = i;
+        let currRow = new Uint16Array(len1 + 1);
+
+        for (let i = 1; i <= len2; i++) {
+            currRow[0] = i;
+            const char2 = s2.charCodeAt(i - 1);
+            for (let j = 1; j <= len1; j++) {
+                if (char2 === s1.charCodeAt(j - 1)) {
+                    currRow[j] = prevRow[j - 1];
+                } else {
+                    currRow[j] = Math.min(
+                        prevRow[j - 1], // replace
+                        prevRow[j],     // insert
+                        currRow[j - 1]  // delete
+                    ) + 1;
+                }
+            }
+            const temp = prevRow;
+            prevRow = currRow;
+            currRow = temp;
+        }
+        return prevRow[len1];
+    }
+
+    // Reuse pre-allocated array for O(min(M, N)) space and improved cache locality
+    for (let i = 0; i <= len1; i++) levCache[i] = i;
+
+    for (let i = 1; i <= len2; i++) {
+        let prevDiag = levCache[0];
+        levCache[0] = i;
+        const char2 = s2.charCodeAt(i - 1);
+
+        for (let j = 1; j <= len1; j++) {
+            const prevTemp = levCache[j];
+            if (char2 === s1.charCodeAt(j - 1)) {
+                levCache[j] = prevDiag;
+            } else {
+                levCache[j] = Math.min(
+                    prevDiag, // replace
+                    levCache[j], // insert
+                    levCache[j - 1] // delete
+                ) + 1;
+            }
+            prevDiag = prevTemp;
+        }
+    }
+    return levCache[len1];
+}
+
 // 内存存储匹配任务
 const activeJobs = new Map();
 
@@ -2468,35 +2540,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[（(]/g, '(')
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
