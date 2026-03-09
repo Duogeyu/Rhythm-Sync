@@ -19,6 +19,17 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // 阻止目录遍历
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+        return false;
+    }
+    // 检查是否包含被限制的字符，或者直接用允许的正则表达式，放宽限制
+    // 允许字母，数字，空格，以及 . - _ [ ] ( ) ~
+    return /^[a-zA-Z0-9_. \-\[\]\(\)~]+$/.test(filename);
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -345,8 +356,11 @@ app.use((req, res, next) => {
 function saveQueryLog(logData) {
     const { sessionId, clientIp, neteaseUid, playlistId, playlistName, songCount, matchResults, startTime, endTime } = logData;
 
+    const safeUid = isSafeFilename(String(neteaseUid)) ? neteaseUid : 'unknown';
+    const safePlaylistId = isSafeFilename(String(playlistId)) ? playlistId : 'unknown';
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `query_${neteaseUid}_${playlistId}_${timestamp}.json`;
+    const filename = `query_${safeUid}_${safePlaylistId}_${timestamp}.json`;
     const filepath = path.join(LOG_DIR, filename);
 
     const logEntry = {
@@ -1728,6 +1742,11 @@ function getCoverUrl(gameId, originalUrl, req) {
 // 封面代理 API - 按需下载并缓存封面
 app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     const { gameId, fileName } = req.params;
+
+    if (!isSafeFilename(gameId) || !isSafeFilename(fileName)) {
+        return res.status(400).json({ error: '无效的文件名或游戏ID' });
+    }
+
     const filePath = path.join(COVERS_DIR, gameId, fileName);
     
     // 如果已缓存，直接返回
@@ -3356,6 +3375,11 @@ app.get('/api/random', async (req, res) => {
  */
 app.get('/api/random/image/:id', (req, res) => {
     const { id } = req.params;
+
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: '无效的图片ID' });
+    }
+
     const imagePath = path.join(SONG_IMAGE_DIR, `${id}.png`);
     
     if (!fs.existsSync(imagePath)) {
@@ -4160,6 +4184,11 @@ app.post('/api/bot/query', async (req, res) => {
 app.get('/api/bot/result/:id', (req, res) => {
     try {
         const { id } = req.params;
+
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ success: false, error: '无效的结果ID' });
+        }
+
         const filePath = path.join(BOT_RESULT_DIR, `${id}.json`);
         
         if (!fs.existsSync(filePath)) {
@@ -4186,6 +4215,11 @@ app.get('/api/bot/result/:id', (req, res) => {
 app.get('/api/bot/result/:id/image', async (req, res) => {
     try {
         const { id } = req.params;
+
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ error: '无效的结果ID' });
+        }
+
         const imagePath = path.join(BOT_RESULT_DIR, 'images', `${id}.png`);
         
         if (!fs.existsSync(imagePath)) {
@@ -5203,6 +5237,10 @@ async function generateShareImage(shareId) {
 app.get('/api/share/:id/image', async (req, res) => {
     const { id } = req.params;
     
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: '无效的分享ID' });
+    }
+
     // 检查分享是否存在
     const sharePath = path.join(SHARE_DATA_DIR, `${id}.json`);
     if (!fs.existsSync(sharePath)) {
@@ -5293,6 +5331,11 @@ app.post('/api/share/create', (req, res) => {
 app.get('/api/share/:shareId', (req, res) => {
     try {
         const { shareId } = req.params;
+
+        if (!isSafeFilename(shareId)) {
+            return res.status(400).json({ success: false, error: 'invalid', message: '无效的分享ID' });
+        }
+
         const filePath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
         
         if (!fs.existsSync(filePath)) {
