@@ -1,0 +1,4 @@
+## 2024-05-30 - Fix Path Traversal Vulnerabilities in File-Serving Endpoints
+**Vulnerability:** The application had several endpoints taking user input directly into file paths (e.g. `req.params`) without sufficient sanitization. Path Traversal attacks could be used to read arbitrary system files outside of intended directories.
+**Learning:** We need to validate ALL incoming parameters before they can be used in `path.join()`, including strings used in dynamically generated log file names. Even `id` components can contain arbitrary characters if an attacker alters the path.
+**Prevention:** Always define and use strict `isSafeFilename` validator functions for components of file paths. Block `..`, `/`, `\`, and strongly enforce an alphanumeric pattern with a short whitelist of punctuation like hyphens and periods.
