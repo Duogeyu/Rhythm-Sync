@@ -1,0 +1,4 @@
+## 2026-03-10 - [Path Traversal in API Endpoints]
+**Vulnerability:** Multiple endpoints (`/api/covers`, `/api/random/image`, `/api/bot/result`, `/api/share`) used user-controlled route parameters (e.g. `req.params.id`) directly in `path.join()` without validation. This allowed an attacker to input `..` sequences to perform path traversal and potentially read arbitrary files from the server's filesystem.
+**Learning:** The codebase constructs local file paths based on Express route parameters. While Express handles basic URL decoding, it doesn't prevent directory traversal sequences like `..` from being passed into `path.join()`.
+**Prevention:** Always validate dynamic route parameters (`req.params`) using `isSafeFilename()` or similar checks before passing them to `fs` or `path` methods. A simple check for `..`, `/`, `\`, and null bytes (`\0`) is effective.
