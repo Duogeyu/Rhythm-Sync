@@ -2370,6 +2370,60 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
     }
 });
 
+// ⚡ Bolt: 优化 levenshteinDistance，将其移至模块级别，并使用一维 Uint16Array 减少内存分配
+// 采用 O(min(M, N)) 的空间复杂度，大幅降低 Node.js GC 压力，提升批量匹配时的计算速度
+let levRow = new Uint16Array(256);
+
+const levenshteinDistance = (s1, s2) => {
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    // 确保 s1 是较短的字符串，以优化空间
+    if (s1.length > s2.length) {
+        const temp = s1;
+        s1 = s2;
+        s2 = temp;
+    }
+
+    const len1 = s1.length;
+    const len2 = s2.length;
+
+    // 如果数组不够大，则重新分配
+    if (len1 + 1 > levRow.length) {
+        levRow = new Uint16Array(len1 + 1);
+    }
+
+    // 初始化行
+    for (let i = 0; i <= len1; i++) {
+        levRow[i] = i;
+    }
+
+    for (let i = 1; i <= len2; i++) {
+        let prevDiagonal = levRow[0];
+        levRow[0] = i;
+        const char2 = s2.charCodeAt(i - 1);
+
+        for (let j = 1; j <= len1; j++) {
+            const currentDiagonal = levRow[j];
+            let current;
+            if (s1.charCodeAt(j - 1) === char2) {
+                current = prevDiagonal;
+            } else {
+                const replace = prevDiagonal + 1;
+                const insert = levRow[j - 1] + 1;
+                const del = currentDiagonal + 1;
+
+                let min = replace < insert ? replace : insert;
+                current = del < min ? del : min;
+            }
+            prevDiagonal = currentDiagonal;
+            levRow[j] = current;
+        }
+    }
+
+    return levRow[len1];
+};
+
 // 内存存储匹配任务
 const activeJobs = new Map();
 
@@ -2468,35 +2522,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[（(]/g, '(')
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
