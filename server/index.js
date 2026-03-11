@@ -2820,17 +2820,17 @@ app.post('/api/match-all', async (req, res) => {
 
             // 1. 建立精确匹配索引 (Map)
             const titleMap = new Map();
-            songs.forEach(s => {
+            // 为 fuzzysort 预处理数据
+            const preparedSongs = songs.map(s => {
                 titleMap.set(normalizeTitle(s.title), s);
                 // 尝试保留原始标题作为 key 备用
                 titleMap.set(s.title, s);
-            });
 
-            // 2. 建立 Fuse.js 模糊匹配索引
-            const fuse = new Fuse(songs, {
-                keys: ['title', 'artist'],
-                threshold: 0.3,
-                includeScore: true
+                return {
+                    ...s,
+                    preparedTitle: fuzzysort.prepare(s.title || ''),
+                    preparedArtist: fuzzysort.prepare(s.artist || '')
+                };
             });
 
             const matches = [];
@@ -2848,20 +2848,30 @@ app.post('/api/match-all', async (req, res) => {
                         matchType: 'exact'
                     });
                     matchedUserSongIds.add(userSong.id);
-                    continue; // 命中精确匹配，跳过 Fuse
+                    continue; // 命中精确匹配，跳过模糊匹配
                 }
 
-                // 未命中，使用 Fuse 模糊匹配
-                const fuseResults = fuse.search(userSong.name);
+                // 未命中，使用 fuzzysort 模糊匹配
+                const fuzzyResults = fuzzysort.go(userSong.name, preparedSongs, {
+                    keys: ['preparedTitle', 'preparedArtist'],
+                    limit: 1,
+                    threshold: -700 // 相当于 fuse.js 的 threshold: 0.3
+                });
 
-                if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-                    matches.push({
-                        userSong,
-                        arcadeSong: fuseResults[0].item,
-                        score: 1 - fuseResults[0].score,
-                        matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-                    });
-                    matchedUserSongIds.add(userSong.id);
+                if (fuzzyResults.length > 0) {
+                    const result = fuzzyResults[0];
+                    // 归一化得分 (0-1)
+                    const normalizedScore = Math.max(0, (result.score + 1000) / 1000);
+
+                    if (normalizedScore > 0.7) { // 类似 1 - 0.3 = 0.7
+                        matches.push({
+                            userSong,
+                            arcadeSong: result.obj,
+                            score: normalizedScore,
+                            matchType: normalizedScore > 0.9 ? 'exact' : 'fuzzy'
+                        });
+                        matchedUserSongIds.add(userSong.id);
+                    }
                 }
             }
 
