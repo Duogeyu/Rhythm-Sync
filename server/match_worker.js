@@ -1,5 +1,5 @@
 const { parentPort, workerData } = require('worker_threads');
-const Fuse = require('fuse.js');
+const fuzzysort = require('fuzzysort');
 const { normalizeTitle } = require('./utils');
 
 const { songs, userSongs, gameId, config } = workerData;
@@ -13,12 +13,12 @@ try {
         titleMap.set(s.title, s);
     });
 
-    // 2. 建立 Fuse.js 模糊匹配索引
-    const fuse = new Fuse(songs, {
-        keys: ['title', 'artist'],
-        threshold: 0.3,
-        includeScore: true
-    });
+    // 2. 建立 fuzzysort 模糊匹配索引
+    const preparedSongs = songs.map(s => ({
+        ...s,
+        preparedTitle: fuzzysort.prepare(s.title || ''),
+        preparedArtist: fuzzysort.prepare(s.artist || '')
+    }));
 
     const matches = [];
 
@@ -33,19 +33,28 @@ try {
                 score: 1.0,
                 matchType: 'exact'
             });
-            continue; // 命中精确匹配，跳过 Fuse
+            continue; // 命中精确匹配，跳过 fuzzysort
         }
 
-        // 未命中，使用 Fuse 模糊匹配
-        const fuseResults = fuse.search(userSong.name);
+        // 未命中，使用 fuzzysort 模糊匹配
+        const fuzzysortResults = fuzzysort.go(userSong.name, preparedSongs, {
+            keys: ['preparedTitle', 'preparedArtist'],
+            limit: 1,
+            threshold: -300 // Match fuse threshold ~0.3
+        });
 
-        if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-            matches.push({
-                userSong,
-                arcadeSong: fuseResults[0].item,
-                score: 1 - fuseResults[0].score,
-                matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-            });
+        if (fuzzysortResults.length > 0) {
+            const bestMatch = fuzzysortResults[0];
+            const normalizedScore = Math.max(0, (bestMatch.score + 1000) / 1000);
+
+            if (normalizedScore > 0.7) { // 1 - 0.3 = 0.7
+                matches.push({
+                    userSong,
+                    arcadeSong: bestMatch.obj,
+                    score: normalizedScore,
+                    matchType: normalizedScore > 0.9 ? 'exact' : 'fuzzy'
+                });
+            }
         }
     }
 

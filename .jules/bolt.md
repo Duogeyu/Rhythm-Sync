@@ -1,0 +1,3 @@
+## 2024-05-15 - Replace Fuse.js with Fuzzysort for Performance
+**Learning:** Legacy instances of `fuse.js` can become performance bottlenecks for fuzzy string matching, especially within large datasets and loops. Replacing `fuse.js` with `fuzzysort` in `server/match_worker.js` and `/api/match-all` significantly improves string matching performance.
+**Action:** When migrating to `fuzzysort`, remember to explicitly prepare data using `fuzzysort.prepare()` mapped into an array, use `fuzzysort.go()` with the prepared keys, and normalize the native negative scoring to a 0-1 scale using `Math.max(0, (score + 1000) / 1000)` to maintain compatibility with the legacy `fuse.js` ranking logic. Ensure `const fuzzysort = require('fuzzysort');` is imported.
