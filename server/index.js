@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const fuzzysort = require('fuzzysort');
-const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
@@ -2826,12 +2825,12 @@ app.post('/api/match-all', async (req, res) => {
                 titleMap.set(s.title, s);
             });
 
-            // 2. 建立 Fuse.js 模糊匹配索引
-            const fuse = new Fuse(songs, {
-                keys: ['title', 'artist'],
-                threshold: 0.3,
-                includeScore: true
-            });
+            // 2. 建立 fuzzysort 模糊匹配索引
+            const preparedSongs = songs.map(s => ({
+                ...s,
+                preparedTitle: fuzzysort.prepare(s.title || ''),
+                preparedArtist: fuzzysort.prepare(s.artist || '')
+            }));
 
             const matches = [];
             const matchedUserSongIds = new Set();
@@ -2848,20 +2847,29 @@ app.post('/api/match-all', async (req, res) => {
                         matchType: 'exact'
                     });
                     matchedUserSongIds.add(userSong.id);
-                    continue; // 命中精确匹配，跳过 Fuse
+                    continue; // 命中精确匹配，跳过 fuzzysort
                 }
 
-                // 未命中，使用 Fuse 模糊匹配
-                const fuseResults = fuse.search(userSong.name);
+                // 未命中，使用 fuzzysort 模糊匹配
+                const fuzzysortResults = fuzzysort.go(userSong.name, preparedSongs, {
+                    keys: ['preparedTitle', 'preparedArtist'],
+                    limit: 1,
+                    threshold: -300 // Match fuse threshold ~0.3
+                });
 
-                if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-                    matches.push({
-                        userSong,
-                        arcadeSong: fuseResults[0].item,
-                        score: 1 - fuseResults[0].score,
-                        matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-                    });
-                    matchedUserSongIds.add(userSong.id);
+                if (fuzzysortResults.length > 0) {
+                    const bestMatch = fuzzysortResults[0];
+                    const normalizedScore = Math.max(0, (bestMatch.score + 1000) / 1000);
+
+                    if (normalizedScore > 0.7) { // 1 - 0.3 = 0.7
+                        matches.push({
+                            userSong,
+                            arcadeSong: bestMatch.obj,
+                            score: normalizedScore,
+                            matchType: normalizedScore > 0.9 ? 'exact' : 'fuzzy'
+                        });
+                        matchedUserSongIds.add(userSong.id);
+                    }
                 }
             }
 
@@ -3990,11 +3998,11 @@ app.post('/api/bot/query', async (req, res) => {
                     titleMap.set(s.title, s);
                 });
                 
-                const fuse = new Fuse(gameSongs, {
-                    keys: ['title', 'artist'],
-                    threshold: 0.3,
-                    includeScore: true
-                });
+                const preparedSongs = gameSongs.map(s => ({
+                    ...s,
+                    preparedTitle: fuzzysort.prepare(s.title || ''),
+                    preparedArtist: fuzzysort.prepare(s.artist || '')
+                }));
                 
                 const matches = [];
                 
@@ -4003,12 +4011,24 @@ app.post('/api/bot/query', async (req, res) => {
                     
                     // 精确匹配
                     let match = titleMap.get(normalizedUserTitle);
+                    let fuzzyScore = 1.0;
                     
                     // 模糊匹配
                     if (!match) {
-                        const fuzzyResults = fuse.search(userSong.name, { limit: 1 });
-                        if (fuzzyResults.length > 0 && fuzzyResults[0].score < 0.3) {
-                            match = fuzzyResults[0].item;
+                        const fuzzyResults = fuzzysort.go(userSong.name, preparedSongs, {
+                            keys: ['preparedTitle', 'preparedArtist'],
+                            limit: 1,
+                            threshold: -300 // Match fuse threshold ~0.3
+                        });
+
+                        if (fuzzyResults.length > 0) {
+                            const bestMatch = fuzzyResults[0];
+                            const normalizedScore = Math.max(0, (bestMatch.score + 1000) / 1000);
+
+                            if (normalizedScore > 0.7) { // 1 - 0.3 = 0.7
+                                match = bestMatch.obj;
+                                fuzzyScore = normalizedScore;
+                            }
                         }
                     }
                     
@@ -4042,7 +4062,7 @@ app.post('/api/bot/query', async (req, res) => {
                                 charts: match.charts,
                                 levels: match.levels
                             },
-                            score: isTitleExact ? 100 : 80,
+                            score: isTitleExact ? 100 : Math.round(fuzzyScore * 100),
                             matchType: isTitleExact ? 'exact' : 'fuzzy',
                             tags
                         });
