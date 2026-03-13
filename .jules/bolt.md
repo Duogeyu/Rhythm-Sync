@@ -1,0 +1,3 @@
+## 2024-05-24 - [Replaced fuse.js with fuzzysort for performance optimization]
+**Learning:** `fuzzysort` is significantly faster than `fuse.js` when performing fuzzy matching over a large array of objects. When replacing `fuse.js` with `fuzzysort`, spreading the original object and attaching `preparedTitle` and `preparedArtist` directly will bloat the object and API response due to `fuzzysort.prepare()` internal data structures.
+**Action:** When using `fuzzysort` over objects, store the original object under a key like `original` in the mapped array (e.g., `original: s`) so that when a match is found, the clean original object can be extracted via `result.obj.original` instead of polluting the response with internal variables.
