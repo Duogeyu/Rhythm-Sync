@@ -665,17 +665,27 @@ function switchGameSource(gameId, sourceId) {
 loadActiveConfig();
 
 // ============== 缓存函数 ==============
+const songDataCache = new Map(); // 内存缓存
+
 function getCacheFilePath(gameId) {
     return path.join(CACHE_DIR, `${gameId}.json`);
 }
 
 function readCache(gameId) {
+    if (songDataCache.has(gameId)) {
+        const memoryData = songDataCache.get(gameId);
+        if (Date.now() - memoryData.timestamp < CACHE_DURATION) {
+            return memoryData.songs;
+        }
+    }
+
     const filePath = getCacheFilePath(gameId);
     if (!fs.existsSync(filePath)) return null;
 
     try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         if (Date.now() - data.timestamp < CACHE_DURATION) {
+            songDataCache.set(gameId, data);
             console.log(`[缓存] ${gameId} 命中缓存 (${data.songs.length}首)`);
             return data.songs;
         }
@@ -687,11 +697,13 @@ function readCache(gameId) {
 }
 
 function writeCache(gameId, songs) {
-    const filePath = getCacheFilePath(gameId);
-    fs.writeFileSync(filePath, JSON.stringify({
+    const data = {
         timestamp: Date.now(),
         songs
-    }));
+    };
+    songDataCache.set(gameId, data);
+    const filePath = getCacheFilePath(gameId);
+    fs.writeFileSync(filePath, JSON.stringify(data));
     console.log(`[缓存] ${gameId} 已写入缓存 (${songs.length}首)`);
 }
 
