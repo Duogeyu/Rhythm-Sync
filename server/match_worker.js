@@ -1,5 +1,5 @@
 const { parentPort, workerData } = require('worker_threads');
-const Fuse = require('fuse.js');
+const fuzzysort = require('fuzzysort');
 const { normalizeTitle } = require('./utils');
 
 const { songs, userSongs, gameId, config } = workerData;
@@ -13,12 +13,12 @@ try {
         titleMap.set(s.title, s);
     });
 
-    // 2. 建立 Fuse.js 模糊匹配索引
-    const fuse = new Fuse(songs, {
-        keys: ['title', 'artist'],
-        threshold: 0.3,
-        includeScore: true
-    });
+    // 2. 建立 fuzzysort 模糊匹配索引
+    const preparedSongs = songs.map(s => ({
+        original: s,
+        preparedTitle: fuzzysort.prepare(s.title || ''),
+        preparedArtist: fuzzysort.prepare(s.artist || '')
+    }));
 
     const matches = [];
 
@@ -33,19 +33,30 @@ try {
                 score: 1.0,
                 matchType: 'exact'
             });
-            continue; // 命中精确匹配，跳过 Fuse
+            continue; // 命中精确匹配，跳过 fuzzysort
         }
 
-        // 未命中，使用 Fuse 模糊匹配
-        const fuseResults = fuse.search(userSong.name);
+        // 未命中，使用 fuzzysort 模糊匹配
+        const fuzzyResults = fuzzysort.go(userSong.name, preparedSongs, {
+            keys: ['preparedTitle', 'preparedArtist'],
+            limit: 1,
+            threshold: -300
+        });
 
-        if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-            matches.push({
-                userSong,
-                arcadeSong: fuseResults[0].item,
-                score: 1 - fuseResults[0].score,
-                matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-            });
+        if (fuzzyResults.length > 0) {
+            const result = fuzzyResults[0];
+            // Normalize score from fuzzysort (-1000 to 0) to (0 to 1)
+            const normalizedScore = Math.max(0, (result.score + 1000) / 1000);
+
+            // Map the old fuse threshold logic
+            if (normalizedScore > 0.7) { // fuse score < 0.3
+                matches.push({
+                    userSong,
+                    arcadeSong: result.obj.original,
+                    score: normalizedScore,
+                    matchType: normalizedScore > 0.9 ? 'exact' : 'fuzzy' // fuse score < 0.1
+                });
+            }
         }
     }
 

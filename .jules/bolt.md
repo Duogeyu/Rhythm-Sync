@@ -1,0 +1,3 @@
+## 2024-05-15 - Optimizing Fuse with Fuzzysort
+**Learning:** `fuzzysort` requires creating an array of objects to map string preparations to original objects. This requires careful alignment of threshold properties and mapping of output score values. Also, dependencies like `fuzzysort` may already exist and be used elsewhere in the file.
+**Action:** When replacing `fuse.js` with `fuzzysort`, remember to check if `fuzzysort` is already required in the file and if it's already in the `package.json`. Make sure to implement the `fuzzysort` normalization appropriately using `Math.max(0, (score + 1000) / 1000)`.
