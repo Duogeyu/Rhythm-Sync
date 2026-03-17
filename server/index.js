@@ -19,6 +19,15 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isSafeFilename(name) {
+    if (typeof name !== 'string' || !name) return false;
+    // 防止目录遍历: 检查是否包含 .. 以及各种斜杠，还有 null 字节
+    if (name.includes('..') || name.includes('/') || name.includes('\\') || name.includes('\0')) {
+        return false;
+    }
+    return true;
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1728,6 +1737,12 @@ function getCoverUrl(gameId, originalUrl, req) {
 // 封面代理 API - 按需下载并缓存封面
 app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     const { gameId, fileName } = req.params;
+
+    // 安全验证，防止路径遍历
+    if (!isSafeFilename(gameId) || !isSafeFilename(fileName)) {
+        return res.status(400).json({ success: false, error: '非法的请求参数' });
+    }
+
     const filePath = path.join(COVERS_DIR, gameId, fileName);
     
     // 如果已缓存，直接返回
@@ -3356,6 +3371,11 @@ app.get('/api/random', async (req, res) => {
  */
 app.get('/api/random/image/:id', (req, res) => {
     const { id } = req.params;
+
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ success: false, error: '非法的请求参数' });
+    }
+
     const imagePath = path.join(SONG_IMAGE_DIR, `${id}.png`);
     
     if (!fs.existsSync(imagePath)) {
@@ -4160,6 +4180,11 @@ app.post('/api/bot/query', async (req, res) => {
 app.get('/api/bot/result/:id', (req, res) => {
     try {
         const { id } = req.params;
+
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ success: false, error: '非法的请求参数' });
+        }
+
         const filePath = path.join(BOT_RESULT_DIR, `${id}.json`);
         
         if (!fs.existsSync(filePath)) {
@@ -4186,6 +4211,11 @@ app.get('/api/bot/result/:id', (req, res) => {
 app.get('/api/bot/result/:id/image', async (req, res) => {
     try {
         const { id } = req.params;
+
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ success: false, error: '非法的请求参数' });
+        }
+
         const imagePath = path.join(BOT_RESULT_DIR, 'images', `${id}.png`);
         
         if (!fs.existsSync(imagePath)) {
@@ -5203,6 +5233,10 @@ async function generateShareImage(shareId) {
 app.get('/api/share/:id/image', async (req, res) => {
     const { id } = req.params;
     
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ success: false, error: '非法的请求参数' });
+    }
+
     // 检查分享是否存在
     const sharePath = path.join(SHARE_DATA_DIR, `${id}.json`);
     if (!fs.existsSync(sharePath)) {
@@ -5293,6 +5327,11 @@ app.post('/api/share/create', (req, res) => {
 app.get('/api/share/:shareId', (req, res) => {
     try {
         const { shareId } = req.params;
+
+        if (!isSafeFilename(shareId)) {
+            return res.status(400).json({ success: false, error: '非法的请求参数' });
+        }
+
         const filePath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
         
         if (!fs.existsSync(filePath)) {
