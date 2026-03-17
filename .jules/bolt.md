@@ -1,0 +1,3 @@
+## 2026-03-17 - [Dependency Management in Backend Workers]
+**Learning:** The 'fuzzysort' dependency is already declared in 'server/package.json', but the environment required running 'npm ci' to populate 'node_modules' before executing 'node -c'. Code review tools incorrectly flag this as introducing an unmanaged dependency when they rely on static analysis rather than checking the existing 'package.json'.
+**Action:** When migrating to pre-existing dependencies (like 'fuzzysort' over 'fuse.js'), always verify 'package.json' first to ensure it is already listed, and run 'npm ci' to guarantee the module is available for local testing and execution.
