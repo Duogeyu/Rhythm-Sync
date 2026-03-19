@@ -1,0 +1,4 @@
+## 2024-05-24 - [Path Traversal in Dynamic Routes]
+**Vulnerability:** Path traversal vulnerability exists when dynamic route parameters (e.g., `req.params.id`, `req.params.fileName`) are directly concatenated or passed to `path.join()` without validation. Express decodes URL parameters (e.g., `%2f` to `/`), allowing traversal payloads like `../../../etc/passwd` to bypass simple route matching.
+**Learning:** `path.join()` resolves paths, including `..`, so it can easily go outside the intended directory. Because Express decodes `%2f`, an attacker can send `/%2e%2e%2f%2e%2e%2f` to navigate the file system if the application uses those parameters to read or write files.
+**Prevention:** Always validate dynamic route parameters using an `isSafeFilename()` function (blocking `..`, `/`, `\`, and `\0`) before passing them to any `fs` or `path` operations. If validation fails, return an HTTP 400 Bad Request immediately.
