@@ -19,6 +19,15 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isSafeFilename(filename) {
+    if (!filename || typeof filename !== 'string') return false;
+    // 阻止路径遍历字符
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+        return false;
+    }
+    return true;
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1728,6 +1737,9 @@ function getCoverUrl(gameId, originalUrl, req) {
 // 封面代理 API - 按需下载并缓存封面
 app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     const { gameId, fileName } = req.params;
+    if (!isSafeFilename(gameId) || !isSafeFilename(fileName)) {
+        return res.status(400).json({ error: 'Invalid parameter' });
+    }
     const filePath = path.join(COVERS_DIR, gameId, fileName);
     
     // 如果已缓存，直接返回
@@ -3356,6 +3368,9 @@ app.get('/api/random', async (req, res) => {
  */
 app.get('/api/random/image/:id', (req, res) => {
     const { id } = req.params;
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: 'Invalid parameter' });
+    }
     const imagePath = path.join(SONG_IMAGE_DIR, `${id}.png`);
     
     if (!fs.existsSync(imagePath)) {
@@ -4160,6 +4175,9 @@ app.post('/api/bot/query', async (req, res) => {
 app.get('/api/bot/result/:id', (req, res) => {
     try {
         const { id } = req.params;
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ error: 'Invalid parameter' });
+        }
         const filePath = path.join(BOT_RESULT_DIR, `${id}.json`);
         
         if (!fs.existsSync(filePath)) {
@@ -4186,6 +4204,9 @@ app.get('/api/bot/result/:id', (req, res) => {
 app.get('/api/bot/result/:id/image', async (req, res) => {
     try {
         const { id } = req.params;
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ error: 'Invalid parameter' });
+        }
         const imagePath = path.join(BOT_RESULT_DIR, 'images', `${id}.png`);
         
         if (!fs.existsSync(imagePath)) {
@@ -5202,6 +5223,9 @@ async function generateShareImage(shareId) {
 // 获取分享图片
 app.get('/api/share/:id/image', async (req, res) => {
     const { id } = req.params;
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: 'Invalid parameter' });
+    }
     
     // 检查分享是否存在
     const sharePath = path.join(SHARE_DATA_DIR, `${id}.json`);
@@ -5293,6 +5317,9 @@ app.post('/api/share/create', (req, res) => {
 app.get('/api/share/:shareId', (req, res) => {
     try {
         const { shareId } = req.params;
+        if (!isSafeFilename(shareId)) {
+            return res.status(400).json({ error: 'Invalid parameter' });
+        }
         const filePath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
         
         if (!fs.existsSync(filePath)) {
