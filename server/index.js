@@ -39,6 +39,13 @@ function sanitizeInput(input) {
     return sanitized.trim();
 }
 
+// 防止路径遍历攻击的辅助函数
+function isSafeFilename(filename) {
+    if (!filename || typeof filename !== 'string') return false;
+    // 阻止目录遍历字符和空字节，但允许普通字符（包括空格、括号等）
+    return !filename.includes('..') && !filename.includes('/') && !filename.includes('\\') && !filename.includes('\0');
+}
+
 // 从混合文本中提取 URL
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
@@ -1728,6 +1735,12 @@ function getCoverUrl(gameId, originalUrl, req) {
 // 封面代理 API - 按需下载并缓存封面
 app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     const { gameId, fileName } = req.params;
+
+    // 安全检查，防止路径遍历攻击
+    if (!isSafeFilename(gameId) || !isSafeFilename(fileName)) {
+        return res.status(400).json({ error: '无效的参数' });
+    }
+
     const filePath = path.join(COVERS_DIR, gameId, fileName);
     
     // 如果已缓存，直接返回
@@ -3356,6 +3369,12 @@ app.get('/api/random', async (req, res) => {
  */
 app.get('/api/random/image/:id', (req, res) => {
     const { id } = req.params;
+
+    // 安全检查，防止路径遍历攻击
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: '无效的图片 ID' });
+    }
+
     const imagePath = path.join(SONG_IMAGE_DIR, `${id}.png`);
     
     if (!fs.existsSync(imagePath)) {
@@ -4160,6 +4179,12 @@ app.post('/api/bot/query', async (req, res) => {
 app.get('/api/bot/result/:id', (req, res) => {
     try {
         const { id } = req.params;
+
+        // 安全检查，防止路径遍历攻击
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ success: false, error: '无效的结果 ID' });
+        }
+
         const filePath = path.join(BOT_RESULT_DIR, `${id}.json`);
         
         if (!fs.existsSync(filePath)) {
@@ -4186,6 +4211,12 @@ app.get('/api/bot/result/:id', (req, res) => {
 app.get('/api/bot/result/:id/image', async (req, res) => {
     try {
         const { id } = req.params;
+
+        // 安全检查，防止路径遍历攻击
+        if (!isSafeFilename(id)) {
+            return res.status(400).json({ error: '无效的结果 ID' });
+        }
+
         const imagePath = path.join(BOT_RESULT_DIR, 'images', `${id}.png`);
         
         if (!fs.existsSync(imagePath)) {
@@ -5203,6 +5234,11 @@ async function generateShareImage(shareId) {
 app.get('/api/share/:id/image', async (req, res) => {
     const { id } = req.params;
     
+    // 安全检查，防止路径遍历攻击
+    if (!isSafeFilename(id)) {
+        return res.status(400).json({ error: '无效的分享 ID' });
+    }
+
     // 检查分享是否存在
     const sharePath = path.join(SHARE_DATA_DIR, `${id}.json`);
     if (!fs.existsSync(sharePath)) {
@@ -5293,6 +5329,12 @@ app.post('/api/share/create', (req, res) => {
 app.get('/api/share/:shareId', (req, res) => {
     try {
         const { shareId } = req.params;
+
+        // 安全检查，防止路径遍历攻击
+        if (!isSafeFilename(shareId)) {
+            return res.status(400).json({ success: false, error: '无效的分享 ID' });
+        }
+
         const filePath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
         
         if (!fs.existsSync(filePath)) {

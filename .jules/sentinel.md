@@ -1,0 +1,4 @@
+## 2026-03-20 - Path Traversal bypass via Express URL encoded parameters
+**Vulnerability:** Multiple file-serving endpoints relying on dynamic Express route parameters (`req.params.id`, `req.params.fileName`, etc.) concatenated directly with `path.join()` lacked validation, enabling arbitrary Local File Inclusion / Path Traversal (e.g., passing `..%2f..%2fetc%2fpasswd`).
+**Learning:** Express decodes URL parameters natively prior to endpoint logic evaluation. Because `req.params` decodes `%2f` back into `/`, an attacker bypasses the initial route matcher constraints, directly feeding traversal payloads into raw file-system operations.
+**Prevention:** Validate route parameters strictly inside the endpoint logic with a utility like `isSafeFilename` that checks for literal `..`, `/`, `\`, and null bytes before passing values to `path` or `fs` methods.
