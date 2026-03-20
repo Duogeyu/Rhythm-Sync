@@ -221,6 +221,61 @@ function parseInput(input) {
     };
 }
 
+
+// 预分配的数组，用于优化 Levenshtein 距离计算的内存分配
+// 使用 1D 数组降低 GC 压力，空间复杂度从 O(M*N) 降至 O(min(M,N))
+const levenshteinCache = new Uint16Array(1024); // 足够处理大多数歌名长度
+
+// 优化后的 Levenshtein 编辑距离
+function levenshteinDistance(s1, s2) {
+    if (s1 === s2) return 0;
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    // 保证 s1 是较短的字符串，优化空间复杂度
+    if (s1.length > s2.length) {
+        let temp = s1;
+        s1 = s2;
+        s2 = temp;
+    }
+
+    const len1 = s1.length;
+    const len2 = s2.length;
+
+    // 如果字符串太长，动态分配一个更大的数组
+    const cache = len1 + 1 > levenshteinCache.length ? new Uint16Array(len1 + 1) : levenshteinCache;
+
+    for (let j = 0; j <= len1; j++) {
+        cache[j] = j;
+    }
+
+    for (let i = 1; i <= len2; i++) {
+        let prev = i;
+        const char2 = s2.charCodeAt(i - 1);
+
+        for (let j = 1; j <= len1; j++) {
+            const current = cache[j - 1]; // 左上角的值
+            const char1 = s1.charCodeAt(j - 1);
+
+            let val;
+            if (char2 === char1) {
+                val = current; // 相等，不需要替换
+            } else {
+                val = Math.min(
+                    current + 1,        // 替换
+                    cache[j] + 1,       // 插入 (上一行的 j)
+                    prev + 1            // 删除 (当前行的 j-1)
+                );
+            }
+            cache[j - 1] = prev; // 更新左边的值，用于下一次迭代的"上一行"
+            prev = val;
+        }
+        cache[len1] = prev;
+    }
+
+    return cache[len1];
+}
+
 const app = express();
 const PORT = 3002;
 
@@ -2470,34 +2525,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[－-]/g, '-');
         };
 
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
-        };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
             if (error) return null;
