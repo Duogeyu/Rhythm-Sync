@@ -431,6 +431,56 @@ if (!fs.existsSync(COVERS_DIR)) {
 // 加载封面配置
 loadCoversConfig();
 
+// ============== 工具函数 ==============
+// 全局重用的数组，避免在 Levenshtein 距离计算中频繁分配内存，减少 GC 压力
+const LEV_MAX_STR_LEN = 1024;
+const levenshteinCache = new Uint16Array(LEV_MAX_STR_LEN);
+
+// 空间优化的 O(min(M, N)) Levenshtein 编辑距离算法
+const levenshteinDistance = (s1, s2) => {
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    // Ensure s1 is the shorter string to minimize array usage
+    if (s1.length > s2.length) {
+        const tmp = s1;
+        s1 = s2;
+        s2 = tmp;
+    }
+
+    const len1 = s1.length;
+    const len2 = s2.length;
+
+    // Use the pre-allocated cache if possible
+    const row = len1 + 1 > LEV_MAX_STR_LEN ? new Uint16Array(len1 + 1) : levenshteinCache;
+
+    // Initialize the first row
+    for (let i = 0; i <= len1; i++) {
+        row[i] = i;
+    }
+
+    // Compute distance
+    for (let i = 1; i <= len2; i++) {
+        let prev = i; // Represents the first element of the current row
+        const char2 = s2.charCodeAt(i - 1);
+        for (let j = 1; j <= len1; j++) {
+            let val = row[j - 1]; // Diagonal match cost
+            if (char2 !== s1.charCodeAt(j - 1)) {
+                val = Math.min(
+                    val + 1,       // Substitution
+                    prev + 1,      // Insertion
+                    row[j] + 1     // Deletion
+                );
+            }
+            row[j - 1] = prev; // Update previous row's element
+            prev = val;        // Store current value for next iteration
+        }
+        row[len1] = prev; // Update the last element
+    }
+
+    return row[len1];
+};
+
 // ============== 游戏定义 ==============
 // 定义所有支持的游戏及其基本信息
 const GAMES = {
@@ -2468,35 +2518,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[（(]/g, '(')
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
