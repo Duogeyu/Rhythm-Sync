@@ -1,0 +1,4 @@
+## 2024-05-18 - [Path Traversal in Express Dynamic Routes using path.join()]
+**Vulnerability:** Express file-serving endpoints (e.g., `/api/random/image/:id`, `/api/bot/result/:id`) passed unsanitized `req.params` (such as `id` and `fileName`) directly to `path.join()`.
+**Learning:** Even if the directory structure explicitly expects a filename, Express decodes dynamic route parameters (e.g., `%2f` becomes `/`). This allows attackers to bypass routing structure checks and pass directory traversal characters (like `../`) into `path.join()`, potentially exposing sensitive files on the server.
+**Prevention:** Always validate dynamic route parameters using an `isSafeFilename` check (ensuring they do not contain `..`, `/`, `\`, or `\0`) before passing them to file system or path methods, or alternatively, use `path.basename()` to force evaluation as a base file name.
