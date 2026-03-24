@@ -1,0 +1,3 @@
+## 2024-03-24 - [Replace Fuse.js with Fuzzysort for Faster Fuzzy Matching]
+**Learning:** Fuse.js is significantly slower than fuzzysort for large arrays (like arcade song lists), especially when initialized or executed within loops (`fuse.search` vs `fuzzysort.go`).
+**Action:** Replace `Fuse.js` with `fuzzysort` for performance-critical string matching operations. When doing so, ensure legacy `fuse.js` threshold metrics (like `0.3`) and scoring (`0` to `1`) are mapped correctly to `fuzzysort`'s negative scale (`-300`) and normalized to a `0-1` scale (`Math.max(0, (score + 1000) / 1000)`). Also, avoid spreading the original object alongside `fuzzysort.prepare()` to avoid bloating responses, instead nesting the original object under a property (e.g., `original`).
