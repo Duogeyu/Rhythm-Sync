@@ -1,5 +1,5 @@
 const { parentPort, workerData } = require('worker_threads');
-const Fuse = require('fuse.js');
+const fuzzysort = require('fuzzysort');
 const { normalizeTitle } = require('./utils');
 
 const { songs, userSongs, gameId, config } = workerData;
@@ -13,12 +13,12 @@ try {
         titleMap.set(s.title, s);
     });
 
-    // 2. 建立 Fuse.js 模糊匹配索引
-    const fuse = new Fuse(songs, {
-        keys: ['title', 'artist'],
-        threshold: 0.3,
-        includeScore: true
-    });
+    // 2. 建立 fuzzysort 模糊匹配索引
+    const preparedSongs = songs.map(s => ({
+        original: s,
+        preparedTitle: fuzzysort.prepare(s.title || ''),
+        preparedArtist: fuzzysort.prepare(s.artist || '')
+    }));
 
     const matches = [];
 
@@ -36,16 +36,23 @@ try {
             continue; // 命中精确匹配，跳过 Fuse
         }
 
-        // 未命中，使用 Fuse 模糊匹配
-        const fuseResults = fuse.search(userSong.name);
+        // 未命中，使用 fuzzysort 模糊匹配
+        const fuzzyResults = fuzzysort.go(userSong.name, preparedSongs, {
+            keys: ['preparedTitle', 'preparedArtist'],
+            limit: 1,
+            threshold: -300 // 相当于 Fuse.js 0.3 阈值
+        });
 
-        if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-            matches.push({
-                userSong,
-                arcadeSong: fuseResults[0].item,
-                score: 1 - fuseResults[0].score,
-                matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-            });
+        if (fuzzyResults.length > 0) {
+            const score = Math.max(0, (fuzzyResults[0].score + 1000) / 1000);
+            if (score > 0.7) { // 相当于 score < 0.3
+                matches.push({
+                    userSong,
+                    arcadeSong: fuzzyResults[0].obj.original,
+                    score: score,
+                    matchType: score > 0.9 ? 'exact' : 'fuzzy'
+                });
+            }
         }
     }
 

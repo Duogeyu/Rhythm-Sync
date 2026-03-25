@@ -2826,12 +2826,12 @@ app.post('/api/match-all', async (req, res) => {
                 titleMap.set(s.title, s);
             });
 
-            // 2. 建立 Fuse.js 模糊匹配索引
-            const fuse = new Fuse(songs, {
-                keys: ['title', 'artist'],
-                threshold: 0.3,
-                includeScore: true
-            });
+            // 2. 建立 fuzzysort 模糊匹配索引
+            const preparedSongs = songs.map(s => ({
+                original: s,
+                preparedTitle: fuzzysort.prepare(s.title || ''),
+                preparedArtist: fuzzysort.prepare(s.artist || '')
+            }));
 
             const matches = [];
             const matchedUserSongIds = new Set();
@@ -2851,17 +2851,24 @@ app.post('/api/match-all', async (req, res) => {
                     continue; // 命中精确匹配，跳过 Fuse
                 }
 
-                // 未命中，使用 Fuse 模糊匹配
-                const fuseResults = fuse.search(userSong.name);
+                // 未命中，使用 fuzzysort 模糊匹配
+                const fuzzyResults = fuzzysort.go(userSong.name, preparedSongs, {
+                    keys: ['preparedTitle', 'preparedArtist'],
+                    limit: 1,
+                    threshold: -300
+                });
 
-                if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
-                    matches.push({
-                        userSong,
-                        arcadeSong: fuseResults[0].item,
-                        score: 1 - fuseResults[0].score,
-                        matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
-                    });
-                    matchedUserSongIds.add(userSong.id);
+                if (fuzzyResults.length > 0) {
+                    const score = Math.max(0, (fuzzyResults[0].score + 1000) / 1000);
+                    if (score > 0.7) {
+                        matches.push({
+                            userSong,
+                            arcadeSong: fuzzyResults[0].obj.original,
+                            score: score,
+                            matchType: score > 0.9 ? 'exact' : 'fuzzy'
+                        });
+                        matchedUserSongIds.add(userSong.id);
+                    }
                 }
             }
 
@@ -3990,11 +3997,11 @@ app.post('/api/bot/query', async (req, res) => {
                     titleMap.set(s.title, s);
                 });
                 
-                const fuse = new Fuse(gameSongs, {
-                    keys: ['title', 'artist'],
-                    threshold: 0.3,
-                    includeScore: true
-                });
+                const preparedSongs = gameSongs.map(s => ({
+                    original: s,
+                    preparedTitle: fuzzysort.prepare(s.title || ''),
+                    preparedArtist: fuzzysort.prepare(s.artist || '')
+                }));
                 
                 const matches = [];
                 
@@ -4003,12 +4010,21 @@ app.post('/api/bot/query', async (req, res) => {
                     
                     // 精确匹配
                     let match = titleMap.get(normalizedUserTitle);
+                    let finalScore = 1.0;
                     
                     // 模糊匹配
                     if (!match) {
-                        const fuzzyResults = fuse.search(userSong.name, { limit: 1 });
-                        if (fuzzyResults.length > 0 && fuzzyResults[0].score < 0.3) {
-                            match = fuzzyResults[0].item;
+                        const fuzzyResults = fuzzysort.go(userSong.name, preparedSongs, {
+                            keys: ['preparedTitle', 'preparedArtist'],
+                            limit: 1,
+                            threshold: -300
+                        });
+                        if (fuzzyResults.length > 0) {
+                            const score = Math.max(0, (fuzzyResults[0].score + 1000) / 1000);
+                            if (score > 0.7) {
+                                match = fuzzyResults[0].obj.original;
+                                finalScore = score;
+                            }
                         }
                     }
                     
