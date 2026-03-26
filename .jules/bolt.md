@@ -1,0 +1,3 @@
+## 2024-05-24 - [Levenshtein DP Allocation]
+**Learning:** Allocating two-dimensional dynamic programming arrays inside highly concurrent or repetitive route handlers creates significant Garbage Collection (GC) pressure in Node.js, negatively impacting execution speed and memory efficiency.
+**Action:** Lift the function into the global scope and refactor the underlying algorithm to use a single, pre-allocated 1D `Uint16Array` to avoid constant re-allocations and optimize spatial complexity to O(min(M, N)).
