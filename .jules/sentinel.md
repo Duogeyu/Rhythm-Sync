@@ -1,0 +1,4 @@
+## 2025-03-27 - Path Traversal Vulnerability in Express Endpoints
+**Vulnerability:** Several file-serving endpoints (`/api/covers/`, `/api/random/image/`, `/api/bot/result/`, etc.) accepted dynamic parameters directly into `path.join` without sanitization. Express.js automatically URL-decodes path parameters (e.g. `%2F` -> `/`), bypassing route definitions and allowing Path Traversal via `../` sequences to read arbitrary files.
+**Learning:** Developers often forget that Express decodes dynamic route segments, making `path.join` unsafe when directly provided user input containing encoded slashes or directory traversal characters.
+**Prevention:** Always validate parameters with a strong allowlist or a blocklist like `isSafeFilename` that checks for `..`, `/`, `\`, and `\0` before passing them to filesystem operations.
