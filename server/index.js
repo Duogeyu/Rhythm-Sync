@@ -2470,35 +2470,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[－-]/g, '-');
         };
 
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
-        };
-
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
             if (error) return null;
 
@@ -5316,6 +5287,49 @@ app.get('/api/share/:shareId', (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+// Levenshtein 编辑距离优化 (使用一维数组且预分配以降低内存开销和GC压力)
+const levenshteinBuffer = new Uint16Array(1024);
+function levenshteinDistance(s1, s2) {
+    if (s1 === s2) return 0;
+
+    if (s1.length < s2.length) {
+        let temp = s1;
+        s1 = s2;
+        s2 = temp;
+    }
+
+    const len1 = s1.length;
+    const len2 = s2.length;
+
+    if (len2 === 0) return len1;
+
+    let v0 = len2 >= 1024 ? new Uint16Array(len2 + 1) : levenshteinBuffer;
+
+    for (let i = 0; i <= len2; i++) {
+        v0[i] = i;
+    }
+
+    for (let i = 0; i < len1; i++) {
+        let leftCost = i + 1;
+        let upCost = v0[0];
+        v0[0] = leftCost;
+
+        const char1 = s1.charCodeAt(i);
+        for (let j = 0; j < len2; j++) {
+            let replaceCost = upCost + (char1 === s2.charCodeAt(j) ? 0 : 1);
+            upCost = v0[j + 1];
+
+            let currentCost = leftCost + 1;
+            if (replaceCost < currentCost) currentCost = replaceCost;
+            if (upCost + 1 < currentCost) currentCost = upCost + 1;
+
+            v0[j + 1] = currentCost;
+            leftCost = currentCost;
+        }
+    }
+    return v0[len2];
+}
 
 app.listen(PORT, () => {
     console.log(`🎮 音游歌单匹配服务运行在 http://localhost:${PORT}`);
