@@ -1,0 +1,4 @@
+## 2024-03-29 - Path Traversal in Express Dynamic Routes
+**Vulnerability:** File-serving Express routes like `/api/covers/:gameId/:fileName` take user-controlled parameters (`gameId`, `fileName`, `id`, `shareId`) directly and concatenate them using `path.join()`. An attacker could send `..%2f..%2f` which Express decodes as `../../`, allowing them to bypass route matchers and access arbitrary files on the system outside the intended directory.
+**Learning:** Even though Express route definitions like `/:fileName` don't match `/` directly, the attacker can use URL encoding like `%2f` (which Express automatically decodes to `/` before it gets to the handler) to insert path separators and parent directory references into the filename parameter.
+**Prevention:** Always validate dynamic route parameters against path traversal attempts using a function like `isSafeFilename` that explicitly rejects `..`, `/`, `\`, and `\0` before passing them to filesystem operations.
