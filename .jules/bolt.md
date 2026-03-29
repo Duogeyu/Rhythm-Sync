@@ -1,0 +1,3 @@
+## 2024-03-29 - [Optimize levenshteinDistance in backend API]
+**Learning:** The `levenshteinDistance` function is inside the route handler (`/api/match/stream/:sessionId`), and it uses a 2D array and nested loops. This causes a lot of garbage collection (GC) pressure and reallocations when matching thousands of songs. A 1D array approach using `Uint16Array` hoisted outside the route can significantly reduce GC overhead.
+**Action:** Extract `levenshteinDistance` out of the route handler, and optimize its space complexity from O(MN) to O(min(M, N)) using a single globally reusable `Uint16Array`.
