@@ -47,6 +47,54 @@ function extractUrlFromText(text) {
     return matches ? matches[0] : null;
 }
 
+// ============== 性能优化 ==============
+// 预分配用于 levenshteinDistance 的缓存数组
+// 1024 长度足以支持大部分游戏曲名匹配（通常小于 100 字符）
+const LEVENSHTEIN_CACHE = new Uint16Array(1024);
+
+// O(min(M, N)) 空间复杂度的 Levenshtein 编辑距离算法
+// 移动到外层避免请求内部反复分配内存，减轻 GC 压力
+const levenshteinDistance = (s1, s2) => {
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    // 保证 s1 总是较短的字符串，优化空间使用
+    if (s1.length > s2.length) {
+        let tmp = s1;
+        s1 = s2;
+        s2 = tmp;
+    }
+
+    const m = s1.length;
+    const n = s2.length;
+
+    // 超过预分配数组长度则降级为只返回最大长度（兜底逻辑）
+    if (m >= 1024) return Math.max(m, n);
+
+    for (let j = 0; j <= m; j++) {
+        LEVENSHTEIN_CACHE[j] = j;
+    }
+
+    for (let i = 1; i <= n; i++) {
+        let prevDiag = LEVENSHTEIN_CACHE[0];
+        LEVENSHTEIN_CACHE[0] = i;
+        for (let j = 1; j <= m; j++) {
+            let temp = LEVENSHTEIN_CACHE[j];
+            if (s1[j - 1] === s2[i - 1]) {
+                LEVENSHTEIN_CACHE[j] = prevDiag;
+            } else {
+                LEVENSHTEIN_CACHE[j] = Math.min(
+                    LEVENSHTEIN_CACHE[j - 1], // 插入
+                    LEVENSHTEIN_CACHE[j],     // 删除
+                    prevDiag                  // 替换
+                ) + 1;
+            }
+            prevDiag = temp;
+        }
+    }
+    return LEVENSHTEIN_CACHE[m];
+};
+
 function getPublicWebBaseUrl(req) {
     const envUrl = (process.env.PUBLIC_WEB_URL || '').trim();
     if (envUrl) {
@@ -2468,35 +2516,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[（(]/g, '(')
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
