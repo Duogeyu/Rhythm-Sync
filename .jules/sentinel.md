@@ -1,0 +1,4 @@
+## 2026-03-30 - Express Route Parameter Path Traversal
+**Vulnerability:** Express automatically URL-decodes path parameters (e.g., `%2f` to `/`), allowing attackers to bypass simple route matching and execute Path Traversal attacks when the parameter is subsequently passed to `path.join()`.
+**Learning:** Even if a route is defined as `/api/covers/:gameId/:fileName` without matching slashes in `fileName`, an encoded payload like `..%2f..%2fetc%2fpasswd` will successfully route to the endpoint, be decoded to `../../etc/passwd`, and traverse the directory when joined with a base path.
+**Prevention:** Always validate and sanitize dynamic route parameters globally using `app.param()` or specific middleware, actively checking for directory traversal characters (`..`, `/`, `\`) before they reach filesystem APIs.
