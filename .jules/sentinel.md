@@ -1,0 +1,4 @@
+## 2023-11-20 - Global Path Traversal Prevention via Express Route Parameters
+**Vulnerability:** Path Traversal vulnerability where Express decodes URL parameters (like `%2f` to `/`) and passes them into file path methods, allowing an attacker to traverse out of the intended directory.
+**Learning:** Using `app.param()` with a shared security utility allows centralized enforcement of directory parameter safety (`isSafeFilename`) across all dynamic Express routes without individually modifying every endpoint. Express resolves these params before passing to route handlers, preventing payloads like `%2e%2e%2f` from bypassing checks.
+**Prevention:** Apply `app.param(['id', 'fileName', 'gameId', ...], validateParamMiddleware)` at the global app setup level to explicitly reject directory traversal characters before the route logic ever processes the request.
