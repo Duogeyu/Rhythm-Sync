@@ -19,6 +19,14 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    return !filename.includes('..') &&
+           !filename.includes('/') &&
+           !filename.includes('\\') &&
+           !filename.includes('\0');
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -321,6 +329,14 @@ async function getIpLocation(ip) {
     
     return { country: '未知', region: '', city: '', isp: '' };
 }
+
+// 安全路由参数校验中间件
+app.param(['id', 'fileName', 'gameId', 'shareId', 'resultId'], (req, res, next, value) => {
+    if (!isSafeFilename(value)) {
+        return res.status(400).json({ error: 'Invalid parameter' });
+    }
+    next();
+});
 
 // 请求日志中间件
 app.use((req, res, next) => {
