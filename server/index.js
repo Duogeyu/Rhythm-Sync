@@ -39,6 +39,15 @@ function sanitizeInput(input) {
     return sanitized.trim();
 }
 
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // 检查是否包含路径遍历字符或空字节
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+        return false;
+    }
+    return true;
+}
+
 // 从混合文本中提取 URL
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
@@ -223,6 +232,14 @@ function parseInput(input) {
 
 const app = express();
 const PORT = 3002;
+
+// 全局路径参数安全验证中间件
+app.param(['id', 'fileName', 'gameId', 'shareId'], (req, res, next, val) => {
+    if (!isSafeFilename(val)) {
+        return res.status(400).json({ success: false, error: '非法的路径参数' });
+    }
+    next();
+});
 
 // CORS 配置 - 允许所有来源（包括自定义域名）
 app.use(cors({
