@@ -39,6 +39,54 @@ function sanitizeInput(input) {
     return sanitized.trim();
 }
 
+// 空间优化的 Levenshtein 编辑距离 (O(min(M, N)))，复用 Uint16Array 减少 GC 压力
+const MAX_STR_LEN = 512;
+const sharedLevRow = new Uint16Array(MAX_STR_LEN);
+
+function levenshteinDistance(s1, s2) {
+    if (s1 === s2) return 0;
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    // a 始终是较短的字符串，以减少内存访问
+    let a = s1.length < s2.length ? s1 : s2;
+    let b = s1.length < s2.length ? s2 : s1;
+    let aLen = a.length;
+    let bLen = b.length;
+
+    // 如果长度超过预分配大小，则动态分配
+    const levRow = aLen < MAX_STR_LEN ? sharedLevRow : new Uint16Array(aLen + 1);
+
+    // 初始化第一行
+    for (let j = 0; j <= aLen; j++) levRow[j] = j;
+
+    for (let i = 1; i <= bLen; i++) {
+        let prev = i;
+        let bChar = b.charCodeAt(i - 1);
+        let diag = levRow[0];
+        levRow[0] = i;
+
+        for (let j = 1; j <= aLen; j++) {
+            let temp = levRow[j];
+            let cost = bChar === a.charCodeAt(j - 1) ? 0 : 1;
+
+            // prev 等同于 matrix[i][j-1] (插入)
+            // levRow[j] 等同于 matrix[i-1][j] (删除)
+            // diag 等同于 matrix[i-1][j-1] (替换/匹配)
+            prev = Math.min(
+                levRow[j] + 1,
+                prev + 1,
+                diag + cost
+            );
+
+            // 更新 levRow 为下一迭代的 diag，以及下一行的删除
+            diag = temp;
+            levRow[j] = prev;
+        }
+    }
+    return levRow[aLen];
+}
+
 // 从混合文本中提取 URL
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
@@ -2468,35 +2516,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[（(]/g, '(')
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
