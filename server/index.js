@@ -18,6 +18,78 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+// ============== 字符串处理函数 ==============
+const normalizeTitle = (str) => {
+    if (!str) return '';
+    return str.toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/[！!]/g, '!')
+        .replace(/[？?]/g, '?')
+        .replace(/[（(]/g, '(')
+        .replace(/[）)]/g, ')')
+        .replace(/[－-]/g, '-');
+};
+
+const normalizeArtist = (str) => {
+    if (!str) return '';
+    return str.toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/[,，、&＆×x]/g, '') // 去除分隔符
+        .replace(/feat\.?/gi, '')
+        .replace(/cv[.:]?/gi, '')
+        .replace(/[(（][^)）]*[)）]/g, ''); // 去除括号内容
+};
+
+const MAX_LEN = 1024;
+const dpBuffer = new Uint16Array(MAX_LEN + 1);
+
+const levenshteinDistance = (s1, s2) => {
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    // ensure s1 is the shorter one to minimize memory usage
+    if (s1.length > s2.length) {
+        const temp = s1;
+        s1 = s2;
+        s2 = temp;
+    }
+
+    const m = s1.length;
+    const n = s2.length;
+
+    let dp;
+    if (m <= MAX_LEN) {
+        dp = dpBuffer;
+    } else {
+        dp = new Uint16Array(m + 1);
+    }
+
+    for (let i = 0; i <= m; i++) {
+        dp[i] = i;
+    }
+
+    for (let i = 1; i <= n; i++) {
+        let prev = dp[0];
+        dp[0] = i;
+        const char2 = s2.charAt(i - 1);
+        for (let j = 1; j <= m; j++) {
+            const temp = dp[j];
+            if (char2 === s1.charAt(j - 1)) {
+                dp[j] = prev;
+            } else {
+                dp[j] = Math.min(
+                    dp[j - 1] + 1,
+                    dp[j] + 1,
+                    prev + 1
+                );
+            }
+            prev = temp;
+        }
+    }
+
+    return dp[m];
+};
+
 // ============== 安全过滤函数 ==============
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
@@ -2459,45 +2531,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         sendEvent('init', { totalUserSongs: userSongs.length, gameStats });
 
         // 2. 准备匹配索引
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
-        };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
             if (error) return null;
@@ -2524,16 +2557,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         let batchResults = [];
 
         // 辅助函数：计算艺术家相似度
-        const normalizeArtist = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[,，、&＆×x]/g, '') // 去除分隔符
-                .replace(/feat\.?/gi, '')
-                .replace(/cv[.:]?/gi, '')
-                .replace(/[(（][^)）]*[)）]/g, ''); // 去除括号内容
-        };
-
         const artistMatch = (userArtist, gameArtist) => {
             const ua = normalizeArtist(userArtist);
             const ga = normalizeArtist(gameArtist);
@@ -2792,18 +2815,6 @@ app.post('/api/match-all', async (req, res) => {
         });
 
         const gameDataResults = await Promise.all(gameDataPromises);
-
-        // 辅助函数：标准化标题用于精确匹配
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '') // 去除空格
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
 
         // 对每个游戏进行匹配（并行处理）
         const matchPromises = gameDataResults.map(async ({ gameId, songs, error }) => {
@@ -3576,17 +3587,6 @@ app.get('/api/check', async (req, res) => {
             return res.status(400).json({ success: false, error: '缺少歌曲标题 (title 参数)' });
         }
         
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
-        
         const normalizedTitle = normalizeTitle(title);
         const normalizedArtist = artist ? normalizeTitle(artist) : null;
         
@@ -3965,18 +3965,6 @@ app.post('/api/bot/query', async (req, res) => {
         // 3. 进行匹配
         const gameIds = Object.keys(GAME_CONFIG);
         const results = {};
-        
-        // 准备匹配函数
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
         
         // 并行获取所有游戏数据并匹配
         await Promise.all(gameIds.map(async (gameId) => {
