@@ -1,0 +1,3 @@
+## 2024-05-24 - Levenshtein Distance Matrix GC Pressure
+**Learning:** In the Node.js backend, synchronous code within route handlers runs single-threaded. Defining `levenshteinDistance` inside an Express route and allocating an O(M*N) 2D array for every single string comparison creates massive garbage collection pressure, especially when matching multiple songs concurrently.
+**Action:** Hoist the function definition outside the route handler. Implement a space-optimized O(min(M, N)) dynamic programming algorithm using a single, globally reusable `Uint16Array` (e.g., `dpBuffer`) to drastically reduce memory allocation and GC overhead. Include a fallback to dynamic allocation for string lengths that exceed the pre-allocated buffer size.
