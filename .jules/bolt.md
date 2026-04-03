@@ -1,0 +1,4 @@
+
+## 2024-05-24 - Module Level Extraction and Space Optimization of Levenshtein Distance
+**Learning:** Defining helper functions containing large array allocations (like `matrix` for Levenshtein distance) inside route handlers (like `/api/match/stream/:sessionId`) causes those allocations to happen multiple times per request (once per user song and arcade song loop). A 2D array matrix allocation for O(M*N) memory complexity inside a tight fuzzy matching loop causes heavy garbage collection pressure.
+**Action:** Always hoist algorithmic functions that do not depend on request context to the module level. Furthermore, when computing Levenshtein distance in Node.js, replace the 2D matrix O(M*N) memory complexity algorithm with a 1D row array O(min(M, N)) space algorithm. Use a pre-allocated module-level `Uint16Array` for normal input lengths to completely eliminate per-loop array allocations, adding a dynamic fallback for strings exceeding the buffer max length.
