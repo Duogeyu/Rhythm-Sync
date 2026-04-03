@@ -18,6 +18,33 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+// ============== 字符串算法缓存 ==============
+const LEV_MAX_LEN = 256;
+const levRow = new Uint16Array(LEV_MAX_LEN + 1);
+
+// 空间优化版 Levenshtein 编辑距离 O(min(M, N))
+function levenshteinDistance(s1, s2) {
+    if (s1.length > s2.length) [s1, s2] = [s2, s1];
+    const len1 = s1.length, len2 = s2.length;
+    if (len1 === 0) return len2;
+
+    // 如果字符串超过预分配大小，动态分配以防崩溃
+    const row = len1 <= LEV_MAX_LEN ? levRow : new Uint16Array(len1 + 1);
+    for (let j = 0; j <= len1; j++) row[j] = j;
+
+    for (let i = 1; i <= len2; i++) {
+        let prev = row[0];
+        row[0] = i;
+        const char2 = s2.charCodeAt(i - 1);
+        for (let j = 1; j <= len1; j++) {
+            const current = row[j];
+            row[j] = s1.charCodeAt(j - 1) === char2 ? prev : Math.min(row[j - 1] + 1, row[j] + 1, prev + 1);
+            prev = current;
+        }
+    }
+    return row[len1];
+}
+
 // ============== 安全过滤函数 ==============
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
@@ -2468,35 +2495,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[（(]/g, '(')
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
