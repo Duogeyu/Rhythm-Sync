@@ -1,0 +1,3 @@
+## 2025-02-23 - Optimize Levenshtein Distance memory usage inside loops
+**Learning:** Synchronous Dynamic Programming matrices (like Levenshtein distance) executing inside Node.js event-loop handlers can exert enormous Garbage Collection pressure by allocating massive O(M*N) 2D arrays on every route iteration.
+**Action:** When calculating Levenshtein Distance or similar DP algorithms, hoist the function out of the handler to prevent reallocation, flatten the matrix to a single O(min(M, N)) 1D TypedArray (e.g., `Uint16Array`), pre-allocate it globally, and include a dynamic fallback mechanism for edge-cases that exceed the global buffer's length.
