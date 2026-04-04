@@ -39,6 +39,15 @@ function sanitizeInput(input) {
     return sanitized.trim();
 }
 
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // 阻止目录遍历，允许常见字符
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+        return false;
+    }
+    return true;
+}
+
 // 从混合文本中提取 URL
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
@@ -233,6 +242,14 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// ============== 全局参数安全验证 ==============
+app.param(['id', 'fileName', 'gameId', 'shareId'], (req, res, next, val, name) => {
+    if (!isSafeFilename(val)) {
+        return res.status(400).json({ success: false, error: `Invalid parameter: ${name}` });
+    }
+    next();
+});
 
 // ============== 环境变量配置 ==============
 const APP_ACCESS_PASSWORD = process.env.APP_ACCESS_PASSWORD || '';
