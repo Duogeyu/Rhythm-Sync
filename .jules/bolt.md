@@ -1,0 +1,3 @@
+## 2025-05-18 - Optimized DP Matrix Memory Allocation
+**Learning:** In Node.js backend, since synchronous code within route handlers runs single-threaded without preemption, memory-intensive inner loops (like DP matrices for Levenshtein distance) can cause huge garbage collection pressure when O(M*N) 2D arrays are created per request.
+**Action:** Optimize by implementing O(min(M, N)) space algorithm and define a single, globally reusable array (e.g., `Uint16Array`) outside the route to avoid reallocation, drastically reducing GC pressure. Also hoist common utility functions outside Express routes.
