@@ -1,5 +1,5 @@
 const { parentPort, workerData } = require('worker_threads');
-const Fuse = require('fuse.js');
+const fuzzysort = require('fuzzysort');
 const { normalizeTitle } = require('./utils');
 
 const { songs, userSongs, gameId, config } = workerData;
@@ -13,12 +13,12 @@ try {
         titleMap.set(s.title, s);
     });
 
-    // 2. 建立 Fuse.js 模糊匹配索引
-    const fuse = new Fuse(songs, {
-        keys: ['title', 'artist'],
-        threshold: 0.3,
-        includeScore: true
-    });
+    // 2. 建立 fuzzysort 模糊匹配索引
+    const preparedSongs = songs.map(s => ({
+        original: s,
+        preparedTitle: fuzzysort.prepare(s.title || ''),
+        preparedArtist: fuzzysort.prepare(s.artist || '')
+    }));
 
     const matches = [];
 
@@ -33,18 +33,27 @@ try {
                 score: 1.0,
                 matchType: 'exact'
             });
-            continue; // 命中精确匹配，跳过 Fuse
+            continue; // 命中精确匹配，跳过 fuzzysort
         }
 
-        // 未命中，使用 Fuse 模糊匹配
-        const fuseResults = fuse.search(userSong.name);
+        // 未命中，使用 fuzzysort 模糊匹配
+        const results = fuzzysort.go(userSong.name, preparedSongs, {
+            keys: ['preparedTitle', 'preparedArtist'],
+            limit: 1,
+            threshold: -300 // 对应原 fuse.js 的 0.3 阈值
+        });
 
-        if (fuseResults.length > 0 && fuseResults[0].score < 0.3) {
+        if (results.length > 0) {
+            // 将 fuzzysort 分数(-1000~0) 转换为 0~1 的正向分数
+            const normalizedScore = Math.max(0, (results[0].score + 1000) / 1000);
+
+            // fuse.js的逻辑: score < 0.1 为 exact, < 0.3 为 fuzzy
+            // 对应的正向分数: score > 0.9 为 exact, > 0.7 为 fuzzy
             matches.push({
                 userSong,
-                arcadeSong: fuseResults[0].item,
-                score: 1 - fuseResults[0].score,
-                matchType: fuseResults[0].score < 0.1 ? 'exact' : 'fuzzy'
+                arcadeSong: results[0].obj.original,
+                score: normalizedScore,
+                matchType: normalizedScore > 0.9 ? 'exact' : 'fuzzy'
             });
         }
     }
