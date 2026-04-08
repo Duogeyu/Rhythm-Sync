@@ -1,0 +1,3 @@
+## 2024-03-24 - [Levenshtein Distance 1D Array Optimization]
+**Learning:** Node.js backend route handlers that compute Levenshtein distances on many items (e.g. string matching algorithms) can face huge memory allocation overhead if they create O(M*N) 2D arrays on every computation. Memory-intensive inner loops scale much better when utilizing an O(min(M,N)) space algorithm backed by a globally allocated `Uint16Array` to avoid GC pauses entirely.
+**Action:** Always refactor hot loops running synchronous nested string distance algorithms in Node to use a single persistent, global typed array instead of per-call inner array allocations. Remember to fallback to dynamic arrays when the input exceeds the fixed buffer length to prevent regressions.
