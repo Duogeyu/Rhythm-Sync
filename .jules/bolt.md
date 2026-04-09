@@ -1,0 +1,3 @@
+## 2024-05-24 - Extracting memory-intensive loops in Express routes
+**Learning:** Defining memory-intensive algorithms (like Levenshtein distance using 2D matrices) inside Express route handlers causes massive Garbage Collection (GC) pressure because the functions and their arrays are repeatedly recreated and discarded per request/loop iteration.
+**Action:** Always extract inner loop algorithms outside the request handler, and where possible, use pre-allocated shared, flat 1D global buffers (like `Uint16Array`) with a dynamic allocation fallback for edge cases to reduce GC and keep spatial complexity at `O(min(M, N))`.
