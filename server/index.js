@@ -18,6 +18,68 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+// === 性能优化：全局复用内存用于编辑距离计算 ===
+// 为了防止在请求时由于 O(N * M) 的二维数组分配导致 GC 压力大，我们在全局声明一个固定大小的复用缓存。
+// 当长度超过缓存时回退到二维数组，其余情况利用 O(min(N, M)) 空间复杂度的 1D Uint16Array 实现，以极速提升计算效率。
+const MAX_LEVENSHTEIN_LEN = 1024;
+const levenshteinCache = new Uint16Array(MAX_LEVENSHTEIN_LEN);
+
+const levenshteinDistance = (s1, s2) => {
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    if (s1.length >= MAX_LEVENSHTEIN_LEN || s2.length >= MAX_LEVENSHTEIN_LEN) {
+        const matrix = [];
+        for (let i = 0; i <= s2.length; i++) matrix[i] = [i];
+        for (let j = 0; j <= s1.length; j++) matrix[0][j] = j;
+        for (let i = 1; i <= s2.length; i++) {
+            for (let j = 1; j <= s1.length; j++) {
+                if (s2.charCodeAt(i - 1) === s1.charCodeAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j] + 1
+                    );
+                }
+            }
+        }
+        return matrix[s2.length][s1.length];
+    }
+
+    let minStr = s1.length < s2.length ? s1 : s2;
+    let maxStr = s1.length < s2.length ? s2 : s1;
+    let minLen = minStr.length;
+    let maxLen = maxStr.length;
+
+    for (let i = 0; i <= minLen; i++) {
+        levenshteinCache[i] = i;
+    }
+
+    for (let i = 1; i <= maxLen; i++) {
+        let prev = i;
+        let prevDiag = i - 1;
+        const maxChar = maxStr.charCodeAt(i - 1);
+
+        for (let j = 1; j <= minLen; j++) {
+            const temp = levenshteinCache[j];
+            if (maxChar === minStr.charCodeAt(j - 1)) {
+                levenshteinCache[j] = prevDiag;
+            } else {
+                levenshteinCache[j] = Math.min(
+                    prevDiag + 1,
+                    levenshteinCache[j] + 1,
+                    prev + 1
+                );
+            }
+            prevDiag = temp;
+            prev = levenshteinCache[j];
+        }
+    }
+    return levenshteinCache[minLen];
+};
+
 // ============== 安全过滤函数 ==============
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
@@ -2470,34 +2532,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[－-]/g, '-');
         };
 
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
-        };
+        // Levenshtein 编辑距离逻辑已移至外层提升性能
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
             if (error) return null;
