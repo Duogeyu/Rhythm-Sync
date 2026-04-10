@@ -224,6 +224,21 @@ function parseInput(input) {
 const app = express();
 const PORT = 3002;
 
+// 安全的参数验证，防止路径穿越和非法输入攻击
+function isSafeFilename(filename) {
+    if (!filename || typeof filename !== 'string') return false;
+    const illegalChars = /[<>:"/\\|?*\x00-\x1F~]/;
+    const pathTraversal = /\.\./;
+    return !illegalChars.test(filename) && !pathTraversal.test(filename);
+}
+
+app.param(['id', 'fileName', 'gameId', 'shareId', 'sessionId', 'shortId', 'uid'], (req, res, next, val, name) => {
+    if (!isSafeFilename(val)) {
+        return res.status(400).json({ error: '无效的参数' });
+    }
+    next();
+});
+
 // CORS 配置 - 允许所有来源（包括自定义域名）
 app.use(cors({
     origin: true,  // 允许所有来源
