@@ -222,6 +222,21 @@ function parseInput(input) {
 }
 
 const app = express();
+
+function isSafeFilename(filename) {
+    if (!filename || typeof filename !== 'string') return false;
+    // 仅过滤导致路径穿越或严重安全问题的字符
+    const unsafePatterns = [/\.\./, /\//, /\\/, /\0/];
+    return !unsafePatterns.some(pattern => pattern.test(filename));
+}
+
+app.param(['id', 'fileName', 'gameId', 'songId', 'shareId', 'sessionId', 'shortId', 'uid'], (req, res, next, val, name) => {
+    if (!isSafeFilename(val)) {
+        return res.status(400).json({ success: false, error: 'Invalid parameter value' });
+    }
+    next();
+});
+
 const PORT = 3002;
 
 // CORS 配置 - 允许所有来源（包括自定义域名）
