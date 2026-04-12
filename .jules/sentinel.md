@@ -1,0 +1,4 @@
+## 2024-04-12 - Path Traversal via Express Route Parameters
+**Vulnerability:** Path traversal in file serving endpoints (`/api/covers/:gameId/:fileName`, `/api/random/image/:id`, etc.) allowed attackers to read arbitrary files via URL-encoded path segments (`..%2f`).
+**Learning:** Express decodes URL parameters (e.g., `%2f` to `/`) before passing them to route handlers. If `req.params` values are directly joined using `path.join()` or passed to `fs` modules without checking for directory traversal sequences like `..`, it bypasses Express router matching and enables reading arbitrary files on the filesystem.
+**Prevention:** Always validate all dynamic route parameters (e.g. `req.params.id`, `req.params.fileName`) using a strict `isSafeFilename` check before they reach the `fs` or `path` operations. The `app.param()` method in Express can be used to apply this validation globally to grouped parameter names.
