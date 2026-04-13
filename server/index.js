@@ -19,6 +19,15 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // Block null bytes, directory traversal patterns, and absolute paths
+    if (filename.includes('\0') || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        return false;
+    }
+    return true;
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -223,6 +232,14 @@ function parseInput(input) {
 
 const app = express();
 const PORT = 3002;
+
+// Global parameter validation for path traversal protection
+app.param(['id', 'fileName', 'gameId', 'shareId', 'sessionId', 'shortId', 'uid', 'songId'], (req, res, next, val, name) => {
+    if (!isSafeFilename(val)) {
+        return res.status(400).json({ success: false, error: `Invalid parameter format: ${name}` });
+    }
+    next();
+});
 
 // CORS 配置 - 允许所有来源（包括自定义域名）
 app.use(cors({
@@ -1877,6 +1894,10 @@ app.post('/api/admin/covers/clear', (req, res) => {
     
     try {
         if (gameId) {
+            if (!GAMES[gameId]) {
+                console.warn(`[管理] 非法操作: 尝试清除无效的游戏封面缓存 - ${gameId}`);
+                return res.status(400).json({ success: false, error: '无效的游戏ID' });
+            }
             const gameDir = path.join(COVERS_DIR, gameId);
             if (fs.existsSync(gameDir)) {
                 fs.rmSync(gameDir, { recursive: true });
@@ -4533,6 +4554,10 @@ app.post('/api/admin/clear-cache', (req, res) => {
     
     try {
         if (gameId) {
+            if (!GAMES[gameId]) {
+                console.warn(`[管理] 非法操作: 尝试清除无效的游戏缓存 - ${gameId}`);
+                return res.status(400).json({ success: false, error: '无效的游戏ID' });
+            }
             // 清除指定游戏缓存
             const filePath = path.join(CACHE_DIR, `${gameId}.json`);
             if (fs.existsSync(filePath)) {

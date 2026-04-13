@@ -1,0 +1,4 @@
+## 2023-10-27 - [Express Path Traversal Protection]
+**Vulnerability:** Dynamic route parameters (e.g., `req.params.gameId`, `req.params.id`) and body properties were used directly in `path.join()` or `fs` functions without proper path traversal prevention logic. The existing `sanitizeInput` was geared towards XSS and length limits, lacking robust directory traversal protection.
+**Learning:** In Express 5.x applications, route matching logic automatically decodes `%2f` back to `/`, which bypasses normal routing definitions and allows inputs like `../../` to bleed into filesystem operations if not explicitly guarded against. Relying on basic XSS sanitation is insufficient for filesystem protection.
+**Prevention:** Apply a global parameter validation strategy using `app.param()` alongside an `isSafeFilename` guard function. Furthermore, strictly validate inputs against authoritative object whitelists (like `GAMES`) before constructing filesystem paths.
