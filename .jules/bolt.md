@@ -1,0 +1,3 @@
+## 2026-04-14 - In-Memory Cache Optimization
+**Learning:** The project relies on `fs.readFileSync` inside `readCache` for serving large game JSONs, causing sequential event-loop blocking per endpoint invocation. Adding an in-memory `Map` layer is a highly effective, sub-50-line optimization that drastically reduces response time by avoiding expensive disk I/O and repetitive JSON parsing, but care must be taken to also clear this memory layer during invalidation endpoints (`/api/admin/clear-cache`).
+**Action:** When inspecting caching layers, immediately check if disk IO is performed synchronously on hot paths, and wrap it with an in-memory `Map`. Always synchronize invalidation mechanisms across both layers.

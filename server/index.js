@@ -665,18 +665,30 @@ function switchGameSource(gameId, sourceId) {
 loadActiveConfig();
 
 // ============== 缓存函数 ==============
+const memoryCache = new Map();
+
 function getCacheFilePath(gameId) {
     return path.join(CACHE_DIR, `${gameId}.json`);
 }
 
 function readCache(gameId) {
+    if (memoryCache.has(gameId)) {
+        const data = memoryCache.get(gameId);
+        if (Date.now() - data.timestamp < CACHE_DURATION) {
+            console.log(`[缓存] ${gameId} 命中内存缓存 (${data.songs.length}首)`);
+            return data.songs;
+        }
+        memoryCache.delete(gameId);
+    }
+
     const filePath = getCacheFilePath(gameId);
     if (!fs.existsSync(filePath)) return null;
 
     try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         if (Date.now() - data.timestamp < CACHE_DURATION) {
-            console.log(`[缓存] ${gameId} 命中缓存 (${data.songs.length}首)`);
+            console.log(`[缓存] ${gameId} 命中磁盘缓存 (${data.songs.length}首)`);
+            memoryCache.set(gameId, data);
             return data.songs;
         }
         console.log(`[缓存] ${gameId} 缓存过期`);
@@ -687,11 +699,14 @@ function readCache(gameId) {
 }
 
 function writeCache(gameId, songs) {
-    const filePath = getCacheFilePath(gameId);
-    fs.writeFileSync(filePath, JSON.stringify({
+    const data = {
         timestamp: Date.now(),
         songs
-    }));
+    };
+    memoryCache.set(gameId, data);
+
+    const filePath = getCacheFilePath(gameId);
+    fs.writeFileSync(filePath, JSON.stringify(data));
     console.log(`[缓存] ${gameId} 已写入缓存 (${songs.length}首)`);
 }
 
@@ -4534,6 +4549,7 @@ app.post('/api/admin/clear-cache', (req, res) => {
     try {
         if (gameId) {
             // 清除指定游戏缓存
+            memoryCache.delete(gameId);
             const filePath = path.join(CACHE_DIR, `${gameId}.json`);
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
@@ -4544,6 +4560,7 @@ app.post('/api/admin/clear-cache', (req, res) => {
             }
         } else {
             // 清除所有缓存
+            memoryCache.clear();
             if (fs.existsSync(CACHE_DIR)) {
                 const files = fs.readdirSync(CACHE_DIR);
                 let count = 0;
