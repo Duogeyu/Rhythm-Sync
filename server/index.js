@@ -19,6 +19,12 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isSafeFilename(name) {
+    if (typeof name !== 'string') return false;
+    // 仅阻止核心路径穿越字符，允许 : | ~ 等特殊字符
+    return !name.includes('..') && !name.includes('/') && !name.includes('\\') && !name.includes('\0');
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -223,6 +229,15 @@ function parseInput(input) {
 
 const app = express();
 const PORT = 3002;
+
+// 全局路由参数路径穿越防护
+app.param(['id', 'fileName', 'gameId', 'shareId', 'sessionId', 'shortId', 'uid', 'songId'], (req, res, next, val, name) => {
+    if (!isSafeFilename(val)) {
+        console.warn(`[安全] 检测到路径穿越攻击或无效参数: ${name}=${val}`);
+        return res.status(400).json({ error: '无效的参数: 检测到非法字符' });
+    }
+    next();
+});
 
 // CORS 配置 - 允许所有来源（包括自定义域名）
 app.use(cors({
