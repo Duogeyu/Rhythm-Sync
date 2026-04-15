@@ -1,0 +1,4 @@
+## 2024-04-15 - [CRITICAL] Prevent Path Traversal in Express Routing
+**Vulnerability:** The application was vulnerable to path traversal attacks via URL parameters (e.g. `fileName`, `gameId`, `id`) in various file-serving endpoints like `/api/covers/:gameId/:fileName` because input was directly passed to `path.join()` without validation.
+**Learning:** URL decoded path variables in Express, when passed directly into file system utilities like `path.join()`, allow traversal beyond intended directory scopes if malicious strings like `../` or `%2f` are used.
+**Prevention:** Implement an `isSafeFilename` check on route parameters to explicitly deny typical traversal characters (`/`, `\`, `..`, `\0`). Use Express 5.x native `app.param()` to apply this validation globally to all path variables intended to represent specific resource IDs or filenames.

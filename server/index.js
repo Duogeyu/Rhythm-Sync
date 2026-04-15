@@ -19,6 +19,17 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+
+// 验证文件名是否安全，防止目录遍历攻击
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // 阻止路径穿越字符
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+        return false;
+    }
+    return true;
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -233,6 +244,16 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// 全局路由参数验证，防止路径穿越
+app.param(['id', 'fileName', 'gameId', 'shareId', 'sessionId', 'shortId', 'uid', 'songId'], (req, res, next, val, name) => {
+    if (!isSafeFilename(val)) {
+        console.warn(`[安全防御] 检测到非法的路由参数 ${name}=${val}`);
+        return res.status(400).json({ success: false, error: '非法的参数格式，已拦截可能的攻击' });
+    }
+    next();
+});
+
 
 // ============== 环境变量配置 ==============
 const APP_ACCESS_PASSWORD = process.env.APP_ACCESS_PASSWORD || '';
