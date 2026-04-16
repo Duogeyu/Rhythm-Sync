@@ -1,0 +1,4 @@
+## 2024-05-24 - [Fix Path Traversal in Admin and Standard Endpoints]
+**Vulnerability:** Path traversal vulnerabilities in `app.post('/api/admin/clear-cache')`, `app.post('/api/admin/covers/clear')` due to untrusted `gameId` in `req.body`, as well as general lack of validation for Express path parameters (`:id`, `:fileName`, etc.) mapping to filesystem operations.
+**Learning:** `app.param` was not used to centrally validate user input resolving to filenames, and `req.body` parameters used in `path.join()` or `fs.unlinkSync()` lacked validation against whitelists (e.g. `GAMES`).
+**Prevention:** Always validate `req.body` variables mapping to path parts against a trusted whitelist. Use `app.param` globally in Express to reject traversal sequences (`..`, `/`, `\`, `\0`) for URL path variables resolving to files.
