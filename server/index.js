@@ -63,6 +63,16 @@ function getPublicWebBaseUrl(req) {
     return 'http://localhost:5173';
 }
 
+// ============== 路径安全检测 ==============
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // 允许常规字符、特殊ID字符 (如 : | ~ *)，但必须屏蔽路径穿越核心字符
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+        return false;
+    }
+    return true;
+}
+
 // ============== 多平台链接解析器 ==============
 const PLATFORM_PATTERNS = {
     // 网易云音乐
@@ -223,6 +233,15 @@ function parseInput(input) {
 
 const app = express();
 const PORT = 3002;
+
+// 全局参数安全校验（防止路径穿越）
+app.param(['id', 'fileName', 'gameId', 'shareId', 'sessionId', 'shortId', 'uid', 'songId'], (req, res, next, val, name) => {
+    if (!isSafeFilename(val)) {
+        console.warn(`[安全] 检测到非法的 ${name} 参数:`, val);
+        return res.status(400).json({ success: false, error: '非法的参数格式' });
+    }
+    next();
+});
 
 // CORS 配置 - 允许所有来源（包括自定义域名）
 app.use(cors({
@@ -1877,6 +1896,10 @@ app.post('/api/admin/covers/clear', (req, res) => {
     
     try {
         if (gameId) {
+            if (!GAMES[gameId]) {
+                console.warn(`[管理] 非法的 gameId 参数: ${gameId}`);
+                return res.status(400).json({ success: false, error: '非法的游戏ID' });
+            }
             const gameDir = path.join(COVERS_DIR, gameId);
             if (fs.existsSync(gameDir)) {
                 fs.rmSync(gameDir, { recursive: true });
@@ -4533,6 +4556,10 @@ app.post('/api/admin/clear-cache', (req, res) => {
     
     try {
         if (gameId) {
+            if (!GAMES[gameId]) {
+                console.warn(`[管理] 非法的 gameId 参数: ${gameId}`);
+                return res.status(400).json({ success: false, error: '非法的游戏ID' });
+            }
             // 清除指定游戏缓存
             const filePath = path.join(CACHE_DIR, `${gameId}.json`);
             if (fs.existsSync(filePath)) {
