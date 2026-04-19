@@ -2373,6 +2373,10 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
 // 内存存储匹配任务
 const activeJobs = new Map();
 
+// Levenshtein 距离优化，共享缓冲区避免重复分配
+const LEVENSHTEIN_BUFFER_SIZE = 1024;
+const sharedLevenshteinBuffer = new Uint16Array(LEVENSHTEIN_BUFFER_SIZE);
+
 // 启动匹配任务
 app.post('/api/match/start', (req, res) => {
     const { userSongs, neteaseUid, playlistId, playlistName } = req.body;
@@ -2470,33 +2474,67 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[－-]/g, '-');
         };
 
-        // Levenshtein 编辑距离
+        // Levenshtein 编辑距离 (优化版：O(n) 空间，减少 GC)
         const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
+            const len1 = s1.length;
+            const len2 = s2.length;
+            if (len1 === 0) return len2;
+            if (len2 === 0) return len1;
             
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
+            // 如果字符串过长，回退到动态分配数组，避免越界
+            if (len1 >= LEVENSHTEIN_BUFFER_SIZE) {
+                const row = new Uint16Array(len1 + 1);
+                for (let j = 0; j <= len1; j++) {
+                    row[j] = j;
+                }
+                for (let i = 1; i <= len2; i++) {
+                    let prev = i;
+                    let prevDiagonal = i - 1;
+                    const c2 = s2.charCodeAt(i - 1);
+                    for (let j = 1; j <= len1; j++) {
+                        let current;
+                        if (c2 === s1.charCodeAt(j - 1)) {
+                            current = prevDiagonal;
+                        } else {
+                            current = Math.min(
+                                prevDiagonal, // 替换
+                                prev,         // 插入
+                                row[j]        // 删除
+                            ) + 1;
+                        }
+                        prevDiagonal = row[j];
+                        row[j] = current;
+                        prev = current;
                     }
                 }
+                return row[len1];
             }
-            return matrix[s2.length][s1.length];
+            
+            // 使用共享 buffer 以减少 GC 压力
+            for (let j = 0; j <= len1; j++) {
+                sharedLevenshteinBuffer[j] = j;
+            }
+            for (let i = 1; i <= len2; i++) {
+                let prev = i;
+                let prevDiagonal = i - 1;
+                const c2 = s2.charCodeAt(i - 1);
+                for (let j = 1; j <= len1; j++) {
+                    let current;
+                    if (c2 === s1.charCodeAt(j - 1)) {
+                        current = prevDiagonal;
+                    } else {
+                        current = Math.min(
+                            prevDiagonal,
+                            prev,
+                            sharedLevenshteinBuffer[j]
+                        ) + 1;
+                    }
+                    prevDiagonal = sharedLevenshteinBuffer[j];
+                    sharedLevenshteinBuffer[j] = current;
+                    prev = current;
+                }
+            }
+            return sharedLevenshteinBuffer[len1];
         };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
