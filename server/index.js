@@ -1942,6 +1942,77 @@ app.get('/api/netease/song/:id/url', async (req, res) => {
 const chorusCacheFile = path.join(__dirname, '.cache', 'chorus-cache.json');
 const chorusCache = new Map(); // 内存缓存：songId -> { startTime, endTime }
 
+// 优化：全局预分配用于 Levenshtein 距离计算的 buffer，避免在请求中进行大量内存分配
+// 大部分标题长度在几十以内，1000 已经非常宽裕
+const MAX_LEV_STR_LEN = 1000;
+const levBuffer = new Uint16Array(MAX_LEV_STR_LEN + 1);
+
+/**
+ * 优化版的 Levenshtein 距离算法
+ * - 空间复杂度从 O(N*M) 降至 O(min(N, M))
+ * - 使用全局 Uint16Array 避免对象分配和 GC 开销
+ * - 增加越界回退机制
+ */
+const levenshteinDistance = (s1, s2) => {
+    if (s1.length === 0) return s2.length;
+    if (s2.length === 0) return s1.length;
+
+    // 确保 s1 是较短的字符串，减少内存使用和内部循环次数
+    if (s1.length > s2.length) {
+        const temp = s1;
+        s1 = s2;
+        s2 = temp;
+    }
+
+    // 长度超过缓冲区时动态分配回退
+    if (s1.length > MAX_LEV_STR_LEN) {
+        let prevRow = new Uint16Array(s1.length + 1);
+        for (let j = 0; j <= s1.length; j++) prevRow[j] = j;
+        let currRow = new Uint16Array(s1.length + 1);
+        for (let i = 1; i <= s2.length; i++) {
+            currRow[0] = i;
+            for (let j = 1; j <= s1.length; j++) {
+                if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
+                    currRow[j] = prevRow[j - 1];
+                } else {
+                    currRow[j] = Math.min(
+                        prevRow[j - 1] + 1,
+                        currRow[j - 1] + 1,
+                        prevRow[j] + 1
+                    );
+                }
+            }
+            let temp = prevRow;
+            prevRow = currRow;
+            currRow = temp;
+        }
+        return prevRow[s1.length];
+    }
+
+    // 正常情况使用全局缓冲区
+    for (let j = 0; j <= s1.length; j++) {
+        levBuffer[j] = j;
+    }
+    for (let i = 1; i <= s2.length; i++) {
+        let prevDiagonal = levBuffer[0];
+        levBuffer[0] = i;
+        for (let j = 1; j <= s1.length; j++) {
+            let prevJ = levBuffer[j];
+            if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
+                levBuffer[j] = prevDiagonal;
+            } else {
+                levBuffer[j] = Math.min(
+                    prevDiagonal + 1,
+                    levBuffer[j - 1] + 1,
+                    prevJ + 1
+                );
+            }
+            prevDiagonal = prevJ;
+        }
+    }
+    return levBuffer[s1.length];
+};
+
 // 启动时从文件加载缓存
 try {
     if (fs.existsSync(chorusCacheFile)) {
@@ -2470,34 +2541,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 .replace(/[－-]/g, '-');
         };
 
-        // Levenshtein 编辑距离
-        const levenshteinDistance = (s1, s2) => {
-            if (s1.length === 0) return s2.length;
-            if (s2.length === 0) return s1.length;
-            
-            const matrix = [];
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // 替换
-                            matrix[i][j - 1] + 1,     // 插入
-                            matrix[i - 1][j] + 1      // 删除
-                        );
-                    }
-                }
-            }
-            return matrix[s2.length][s1.length];
-        };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
             if (error) return null;
