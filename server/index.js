@@ -224,6 +224,28 @@ function parseInput(input) {
 const app = express();
 const PORT = 3002;
 
+// ================== 安全配置 ==================
+// 安全：校验文件名和ID，防止路径穿越攻击
+function isSafeFilename(filename) {
+    if (typeof filename !== 'string') return false;
+    // 允许冒号、管道符等用于特殊ID，但拦截核心路径穿越字符
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+        return false;
+    }
+    return true;
+}
+
+// 提取经常在路径中使用的参数名，并应用安全校验
+const pathParams = ['id', 'fileName', 'gameId', 'shareId', 'sessionId', 'shortId', 'uid', 'songId'];
+app.param(pathParams, (req, res, next, val, name) => {
+    // 校验预期的标识符参数
+    if (!isSafeFilename(val)) {
+        console.warn(`[安全] 拦截到非法的路径参数 ${name} = ${val}`);
+        return res.status(400).json({ error: '无效的请求参数' });
+    }
+    next();
+});
+
 // CORS 配置 - 允许所有来源（包括自定义域名）
 app.use(cors({
     origin: true,  // 允许所有来源
