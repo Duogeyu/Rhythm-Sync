@@ -235,6 +235,42 @@ function isSafeFilename(filename) {
     return true;
 }
 
+// 安全：校验URL，防止SSRF攻击
+function isValidExternalUrl(urlString) {
+    if (!urlString) return false;
+    try {
+        const parsedUrl = new URL(urlString);
+
+        // 仅允许 http 和 https
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return false;
+        }
+
+        const hostname = parsedUrl.hostname.toLowerCase();
+
+        // 拦截本地和私有 IP 以及常见本地 hostname
+        const isLocalHost = hostname === 'localhost' ||
+                            hostname === '127.0.0.1' ||
+                            hostname === '[::1]' ||
+                            hostname.endsWith('.localhost');
+
+        // 匹配私有 IP 地址范围: 10.x.x.x, 172.16.x.x-172.31.x.x, 192.168.x.x, 169.254.x.x
+        const isPrivateIp = /^127\.\d+\.\d+\.\d+$/.test(hostname) ||
+                            /^10\.\d+\.\d+\.\d+$/.test(hostname) ||
+                            /^192\.168\.\d+\.\d+$/.test(hostname) ||
+                            /^169\.254\.\d+\.\d+$/.test(hostname) ||
+                            /^172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+$/.test(hostname);
+
+        if (isLocalHost || isPrivateIp) {
+            return false;
+        }
+
+        return true;
+    } catch (e) {
+        return false; // 无效 URL
+    }
+}
+
 // 提取经常在路径中使用的参数名，并应用安全校验
 const pathParams = ['id', 'fileName', 'gameId', 'shareId', 'sessionId', 'shortId', 'uid', 'songId'];
 app.param(pathParams, (req, res, next, val, name) => {
@@ -1767,6 +1803,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!isValidExternalUrl(originalUrl)) {
+        console.warn(`[安全] 拦截到非法的封面 URL 请求 (SSRF 防御): ${originalUrl}`);
+        return res.status(400).json({ error: '无效的封面 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
