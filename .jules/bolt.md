@@ -1,3 +1,3 @@
-## 2023-10-27 - [Optimize Levenshtein Distance Calculation]
-**Learning:** In the Node.js backend, synchronous string matching algorithms like `levenshteinDistance` run single-threaded and block the event loop. The original implementation used a 2D matrix (`const matrix = []`), resulting in $O(N \times M)$ memory allocations and massive Garbage Collection (GC) overhead during bulk matching tasks.
-**Action:** Always optimize dynamic programming matrix calculations in high-frequency Node.js loops by using an $O(N)$ 1D array approach combined with a globally shared `Uint16Array` buffer for standard lengths. Include a dynamic allocation fallback for inputs that exceed the buffer's maximum length.
+## 2024-04-22 - Parallelize getIpLocation I/O
+**Learning:** In endpoints that iterate over arrays (like log files or IP stats), sequential I/O requests (`getIpLocation`, `readFile`) significantly degrade latency due to blocking the loop on each iteration.
+**Action:** Use `Promise.all` combined with `map` to parallelize independent asynchronous calls within loop iterations.
