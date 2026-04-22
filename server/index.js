@@ -4655,20 +4655,29 @@ app.get('/api/admin/recent-logs', async (req, res) => {
         const startIdx = (page - 1) * limit;
         const files = allFiles.slice(startIdx, startIdx + limit);
         
-        for (const file of files) {
+        // ⚡ Bolt: parallelize log reading and getIpLocation calls to avoid sequential blocking
+        const filePromises = files.map(async (file) => {
             try {
-                const data = JSON.parse(fs.readFileSync(path.join(LOG_DIR, file), 'utf8'));
+                const data = JSON.parse(await fs.promises.readFile(path.join(LOG_DIR, file), 'utf8'));
                 
                 // 查询 IP 归属地
                 if (withLocation && data.clientIp) {
                     data.location = await getIpLocation(data.clientIp);
                 }
                 
-                logs.push(data);
+                return data;
             } catch (e) {
                 // 跳过无法解析的文件
+                return null;
             }
-        }
+        });
+
+        const resolvedLogs = await Promise.all(filePromises);
+        resolvedLogs.forEach(data => {
+            if (data !== null) {
+                logs.push(data);
+            }
+        });
         
         res.json({ 
             success: true, 
@@ -4770,16 +4779,16 @@ app.get('/api/admin/stats', async (req, res) => {
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10);
         
-        const topIpsWithLocation = [];
-        for (const [ip, count] of topIpsList) {
+        // ⚡ Bolt: parallelize getIpLocation calls to avoid sequential blocking
+        const topIpsWithLocation = await Promise.all(topIpsList.map(async ([ip, count]) => {
             const location = await getIpLocation(ip);
-            topIpsWithLocation.push({
+            return {
                 ip,
                 count,
                 location: `${location.country} ${location.region} ${location.city}`.trim(),
                 isp: location.isp
-            });
-        }
+            };
+        }));
         
         res.json({
             success: true,
