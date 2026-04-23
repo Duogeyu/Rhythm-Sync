@@ -3304,16 +3304,22 @@ app.get('/api/random', async (req, res) => {
             targetGames = [game];
         }
         
-        // 获取歌曲
+        // 获取歌曲 (并行获取)
         let allSongs = [];
-        for (const gameId of targetGames) {
+        const songFetchPromises = targetGames.map(async (gameId) => {
             try {
                 const songs = await fetchGameSongs(gameId);
-                allSongs = allSongs.concat(songs);
+                return songs;
             } catch (e) {
                 console.warn(`[随机] 获取 ${gameId} 失败: ${e.message}`);
+                return [];
             }
-        }
+        });
+
+        const resultsArray = await Promise.all(songFetchPromises);
+        resultsArray.forEach(songs => {
+            allSongs = allSongs.concat(songs);
+        });
         
         if (allSongs.length === 0) {
             return res.status(500).json({ success: false, error: '无法获取歌曲数据' });
@@ -3568,7 +3574,7 @@ app.get('/api/search', async (req, res) => {
         const results = {};
         let totalMatches = 0;
         
-        for (const gameId of targetGames) {
+        const searchPromises = targetGames.map(async (gameId) => {
             try {
                 const songs = await fetchGameSongs(gameId);
                 
@@ -3580,28 +3586,41 @@ app.get('/api/search', async (req, res) => {
                 });
                 
                 if (fuzzied.length > 0) {
-                    results[gameId] = {
-                        gameName: GAME_CONFIG[gameId].name,
-                        count: fuzzied.length,
-                        matches: fuzzied.map(r => ({
-                            score: r.score,
-                            song: {
-                                id: r.obj.id,
-                                title: r.obj.title,
-                                artist: r.obj.artist,
-                                category: r.obj.category,
-                                coverUrl: r.obj.coverUrl,
-                                charts: r.obj.charts || [],
-                                levels: r.obj.levels || []
-                            }
-                        }))
+                    return {
+                        gameId,
+                        result: {
+                            gameName: GAME_CONFIG[gameId].name,
+                            count: fuzzied.length,
+                            matches: fuzzied.map(r => ({
+                                score: r.score,
+                                song: {
+                                    id: r.obj.id,
+                                    title: r.obj.title,
+                                    artist: r.obj.artist,
+                                    category: r.obj.category,
+                                    coverUrl: r.obj.coverUrl,
+                                    charts: r.obj.charts || [],
+                                    levels: r.obj.levels || []
+                                }
+                            }))
+                        },
+                        count: fuzzied.length
                     };
-                    totalMatches += fuzzied.length;
                 }
+                return null;
             } catch (e) {
                 console.warn(`[搜索] 获取 ${gameId} 失败: ${e.message}`);
+                return null;
             }
-        }
+        });
+
+        const searchResults = await Promise.all(searchPromises);
+        searchResults.forEach(res => {
+            if (res) {
+                results[res.gameId] = res.result;
+                totalMatches += res.count;
+            }
+        });
         
         res.json({
             success: true,
@@ -3653,7 +3672,7 @@ app.get('/api/check', async (req, res) => {
         const matches = {};
         let foundInGames = 0;
         
-        for (const [gameId, config] of Object.entries(GAME_CONFIG)) {
+        const checkPromises = Object.entries(GAME_CONFIG).map(async ([gameId, config]) => {
             try {
                 const songs = await fetchGameSongs(gameId);
                 
@@ -3688,25 +3707,37 @@ app.get('/api/check', async (req, res) => {
                 }
                 
                 if (match) {
-                    matches[gameId] = {
-                        gameName: config.name,
-                        found: true,
-                        song: {
-                            id: match.id,
-                            title: match.title,
-                            artist: match.artist,
-                            category: match.category,
-                            coverUrl: match.coverUrl,
-                            charts: match.charts || [],
-                            levels: match.levels || []
+                    return {
+                        gameId,
+                        result: {
+                            gameName: config.name,
+                            found: true,
+                            song: {
+                                id: match.id,
+                                title: match.title,
+                                artist: match.artist,
+                                category: match.category,
+                                coverUrl: match.coverUrl,
+                                charts: match.charts || [],
+                                levels: match.levels || []
+                            }
                         }
                     };
-                    foundInGames++;
                 }
+                return null;
             } catch (e) {
                 console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
+                return null;
             }
-        }
+        });
+
+        const checkResults = await Promise.all(checkPromises);
+        checkResults.forEach(res => {
+            if (res) {
+                matches[res.gameId] = res.result;
+                foundInGames++;
+            }
+        });
         
         res.json({
             success: true,
@@ -4822,14 +4853,19 @@ app.post('/api/admin/prefetch', async (req, res) => {
     
     const results = {};
     
-    for (const gameId of targetGames) {
+    const prefetchPromises = targetGames.map(async (gameId) => {
         try {
             const songs = await fetchGameSongs(gameId);
-            results[gameId] = { success: true, songCount: songs.length };
+            return { gameId, result: { success: true, songCount: songs.length } };
         } catch (error) {
-            results[gameId] = { success: false, error: error.message };
+            return { gameId, result: { success: false, error: error.message } };
         }
-    }
+    });
+
+    const prefetchResults = await Promise.all(prefetchPromises);
+    prefetchResults.forEach(res => {
+        results[res.gameId] = res.result;
+    });
     
     res.json({ success: true, results });
 });
