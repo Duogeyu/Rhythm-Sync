@@ -5,6 +5,7 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -37,6 +38,60 @@ function sanitizeInput(input) {
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''); // 移除控制字符
     
     return sanitized.trim();
+}
+
+async function isValidExternalUrl(urlString) {
+    try {
+        const parsedUrl = new URL(urlString);
+
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return false;
+        }
+
+        const hostname = parsedUrl.hostname;
+
+        // Block internal IPv4 addresses
+        const isInternalIp = (ipStr) => {
+            if (ipStr === '::1' || ipStr === '[::1]') return true;
+
+            const parts = ipStr.split('.');
+            if (parts.length !== 4) return false;
+            if (parts.some(p => isNaN(p) || p === '')) return false;
+            const ipNum = parts.reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+
+            // 10.0.0.0/8
+            if ((ipNum >>> 24) === 0x0A) return true;
+            // 172.16.0.0/12
+            if ((ipNum >>> 20) === 0xAC1) return true;
+            // 192.168.0.0/16
+            if ((ipNum >>> 16) === 0xC0A8) return true;
+            // 169.254.0.0/16
+            if ((ipNum >>> 16) === 0xA9FE) return true;
+            // 127.0.0.0/8
+            if ((ipNum >>> 24) === 0x7F) return true;
+            // 0.0.0.0/8
+            if ((ipNum >>> 24) === 0x00) return true;
+
+            return false;
+        };
+
+        if (isInternalIp(hostname)) return false;
+        if (hostname === 'localhost') return false;
+
+        // Resolve DNS to prevent DNS rebinding or `localtest.me` bypasses
+        try {
+            const { address } = await dns.promises.lookup(hostname);
+            if (isInternalIp(address)) return false;
+        } catch (dnsErr) {
+            // If DNS resolution fails, it's safer to reject, or it might just be an invalid domain.
+            console.error(`[安全] DNS 解析失败: ${hostname}`, dnsErr.message);
+            return false;
+        }
+
+        return true;
+    } catch (e) {
+        return false;
+    }
 }
 
 // 从混合文本中提取 URL
@@ -1650,6 +1705,11 @@ function isCoverCached(gameId, originalUrl) {
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
     
+    if (!(await isValidExternalUrl(originalUrl))) {
+        console.warn(`[安全] downloadAndCacheCover 拒绝了不安全的 URL: ${originalUrl}`);
+        return null;
+    }
+
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
     
@@ -1767,6 +1827,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!(await isValidExternalUrl(originalUrl))) {
+        console.warn(`[安全] 拒绝了对不安全的外部 URL 的请求: ${originalUrl}`);
+        return res.status(403).json({ error: '不允许的 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -3009,14 +3074,18 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     // 获取封面图片 Base64
     let coverBase64 = null;
     if (song.coverUrl) {
-        try {
-            const coverResp = await axios.get(song.coverUrl, { 
-                responseType: 'arraybuffer',
-                timeout: 5000 
-            });
-            coverBase64 = `data:image/png;base64,${Buffer.from(coverResp.data).toString('base64')}`;
-        } catch (e) {
-            console.warn('[单曲图] 封面获取失败:', e.message);
+        if (!(await isValidExternalUrl(song.coverUrl))) {
+            console.warn(`[安全] generateSongImage 拒绝了不安全的封面 URL: ${song.coverUrl}`);
+        } else {
+            try {
+                const coverResp = await axios.get(song.coverUrl, {
+                    responseType: 'arraybuffer',
+                    timeout: 5000
+                });
+                coverBase64 = `data:${coverResp.headers['content-type'] || 'image/png'};base64,${Buffer.from(coverResp.data).toString('base64')}`;
+            } catch (e) {
+                console.error(`[单曲图] 封面下载失败: ${song.coverUrl}`, e.message);
+            }
         }
     }
     
