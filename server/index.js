@@ -4655,20 +4655,24 @@ app.get('/api/admin/recent-logs', async (req, res) => {
         const startIdx = (page - 1) * limit;
         const files = allFiles.slice(startIdx, startIdx + limit);
         
-        for (const file of files) {
-            try {
-                const data = JSON.parse(fs.readFileSync(path.join(LOG_DIR, file), 'utf8'));
-                
-                // 查询 IP 归属地
-                if (withLocation && data.clientIp) {
-                    data.location = await getIpLocation(data.clientIp);
+        const parsedLogs = await Promise.all(
+            files.map(async (file) => {
+                try {
+                    const data = JSON.parse(await fs.promises.readFile(path.join(LOG_DIR, file), 'utf8'));
+
+                    // 查询 IP 归属地
+                    if (withLocation && data.clientIp) {
+                        data.location = await getIpLocation(data.clientIp);
+                    }
+
+                    return data;
+                } catch (e) {
+                    // 跳过无法解析的文件
+                    return null;
                 }
-                
-                logs.push(data);
-            } catch (e) {
-                // 跳过无法解析的文件
-            }
-        }
+            })
+        );
+        logs.push(...parsedLogs.filter(Boolean));
         
         res.json({ 
             success: true, 
@@ -4715,9 +4719,22 @@ app.get('/api/admin/stats', async (req, res) => {
             const files = fs.readdirSync(LOG_DIR)
                 .filter(f => f.startsWith('query_') && f.endsWith('.json'));
             
-            for (const file of files) {
-                try {
-                    const data = JSON.parse(fs.readFileSync(path.join(LOG_DIR, file), 'utf8'));
+            // Process files in batches to avoid EMFILE and OOM issues
+            const BATCH_SIZE = 50;
+            for (let i = 0; i < files.length; i += BATCH_SIZE) {
+                const batch = files.slice(i, i + BATCH_SIZE);
+                const logsData = await Promise.all(
+                    batch.map(async (file) => {
+                        try {
+                            return JSON.parse(await fs.promises.readFile(path.join(LOG_DIR, file), 'utf8'));
+                        } catch (e) {
+                            return null;
+                        }
+                    })
+                );
+
+                for (const data of logsData) {
+                    if (!data) continue;
                     const logTime = new Date(data.timestamp).getTime();
                     
                     stats.totalQueries++;
@@ -4759,8 +4776,6 @@ app.get('/api/admin/stats', async (req, res) => {
                             stats.gameStats[gameId].totalMatches += result.matchCount || 0;
                         }
                     }
-                } catch (e) {
-                    // 跳过无法解析的文件
                 }
             }
         }
@@ -4770,16 +4785,17 @@ app.get('/api/admin/stats', async (req, res) => {
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10);
         
-        const topIpsWithLocation = [];
-        for (const [ip, count] of topIpsList) {
-            const location = await getIpLocation(ip);
-            topIpsWithLocation.push({
-                ip,
-                count,
-                location: `${location.country} ${location.region} ${location.city}`.trim(),
-                isp: location.isp
-            });
-        }
+        const topIpsWithLocation = await Promise.all(
+            topIpsList.map(async ([ip, count]) => {
+                const location = await getIpLocation(ip);
+                return {
+                    ip,
+                    count,
+                    location: `${location.country} ${location.region} ${location.city}`.trim(),
+                    isp: location.isp
+                };
+            })
+        );
         
         res.json({
             success: true,
