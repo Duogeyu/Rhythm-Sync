@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const dns = require('dns');
 const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
@@ -225,6 +226,25 @@ const app = express();
 const PORT = 3002;
 
 // ================== 安全配置 ==================
+// 安全：校验外部URL，防止SSRF攻击
+async function isValidExternalUrl(urlStr) {
+    if (!urlStr) return false;
+    try {
+        const u = new URL(urlStr);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+        const { address } = await dns.promises.lookup(u.hostname);
+        if (address === '::1' || address.startsWith('fe80:')) return false;
+        const p = address.replace('::ffff:', '').split('.').map(Number);
+        if (p.length === 4) {
+            if (p[0] === 127 || p[0] === 10 || p[0] === 0 ||
+               (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+               (p[0] === 192 && p[1] === 168) ||
+               (p[0] === 169 && p[1] === 254)) return false;
+        } else if (address.startsWith('fc') || address.startsWith('fd')) return false;
+        return true;
+    } catch { return false; }
+}
+
 // 安全：校验文件名和ID，防止路径穿越攻击
 function isSafeFilename(filename) {
     if (typeof filename !== 'string') return false;
@@ -1649,6 +1669,10 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    if (!(await isValidExternalUrl(originalUrl))) {
+        console.warn(`[安全] 拦截到非法的封面 URL: ${originalUrl}`);
+        return null;
+    }
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1668,6 +1692,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
         try {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
+                maxRedirects: 0,
                 timeout: coversConfig.timeout,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -1766,6 +1791,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+    if (!(await isValidExternalUrl(originalUrl))) {
+        return res.status(403).json({ error: '不安全的封面 URL' });
+    }
     
     // 按需下载
     try {
@@ -1780,6 +1808,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         // 下载封面
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
+            maxRedirects: 0,
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -3010,8 +3039,10 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     let coverBase64 = null;
     if (song.coverUrl) {
         try {
+            if (!(await isValidExternalUrl(song.coverUrl))) throw new Error('不安全的封面 URL');
             const coverResp = await axios.get(song.coverUrl, { 
                 responseType: 'arraybuffer',
+                maxRedirects: 0,
                 timeout: 5000 
             });
             coverBase64 = `data:image/png;base64,${Buffer.from(coverResp.data).toString('base64')}`;
