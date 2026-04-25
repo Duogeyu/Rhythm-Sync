@@ -2973,21 +2973,27 @@ if (!fs.existsSync(SONG_IMAGE_DIR)) {
 }
 
 // 定期清理旧的单曲图片 (保留1小时)
-setInterval(() => {
+setInterval(async () => {
     try {
-        const files = fs.readdirSync(SONG_IMAGE_DIR);
+        const files = await fs.promises.readdir(SONG_IMAGE_DIR);
         const now = Date.now();
         let cleaned = 0;
         for (const file of files) {
             const filePath = path.join(SONG_IMAGE_DIR, file);
-            const stat = fs.statSync(filePath);
-            if (now - stat.mtimeMs > 60 * 60 * 1000) {
-                fs.unlinkSync(filePath);
-                cleaned++;
+            try {
+                const stat = await fs.promises.stat(filePath);
+                if (now - stat.mtimeMs > 60 * 60 * 1000) {
+                    await fs.promises.unlink(filePath);
+                    cleaned++;
+                }
+            } catch (err) {
+                // ignore error for individual file stat/unlink
             }
         }
         if (cleaned > 0) console.log(`[单曲图] 清理了 ${cleaned} 张过期图片`);
-    } catch (e) {}
+    } catch (e) {
+        console.error('[单曲图] 清理失败:', e.message);
+    }
 }, 30 * 60 * 1000);
 
 /**
@@ -3827,29 +3833,38 @@ if (!fs.existsSync(BOT_RESULT_DIR)) {
 }
 
 // 清理过期结果
-function cleanupExpiredBotResults() {
+async function cleanupExpiredBotResults() {
     const now = Date.now();
     const expiryMs = BOT_RESULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
     
     try {
-        const files = fs.readdirSync(BOT_RESULT_DIR);
+        const files = await fs.promises.readdir(BOT_RESULT_DIR);
         let cleaned = 0;
         
         for (const file of files) {
             if (!file.endsWith('.json')) continue;
             const filePath = path.join(BOT_RESULT_DIR, file);
             try {
-                const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                const dataStr = await fs.promises.readFile(filePath, 'utf-8');
+                const data = JSON.parse(dataStr);
                 if (now - data.createdAt > expiryMs) {
-                    fs.unlinkSync(filePath);
+                    await fs.promises.unlink(filePath);
                     // 同时删除对应的图片
                     const imgPath = path.join(BOT_RESULT_DIR, 'images', `${file.replace('.json', '')}.png`);
-                    if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+                    try {
+                        await fs.promises.unlink(imgPath);
+                    } catch (imgErr) {
+                        // ignore if file doesn't exist
+                    }
                     cleaned++;
                 }
             } catch (e) {
-                fs.unlinkSync(filePath);
-                cleaned++;
+                try {
+                    await fs.promises.unlink(filePath);
+                    cleaned++;
+                } catch (unlinkErr) {
+                    // ignore
+                }
             }
         }
         
@@ -4854,12 +4869,12 @@ function generateShareId() {
 }
 
 // 清理过期分享数据
-function cleanupExpiredShares() {
+async function cleanupExpiredShares() {
     const now = Date.now();
     const expiryMs = SHARE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
     
     try {
-        const files = fs.readdirSync(SHARE_DATA_DIR);
+        const files = await fs.promises.readdir(SHARE_DATA_DIR);
         let cleaned = 0;
         
         for (const file of files) {
@@ -4867,15 +4882,20 @@ function cleanupExpiredShares() {
             
             const filePath = path.join(SHARE_DATA_DIR, file);
             try {
-                const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                const dataStr = await fs.promises.readFile(filePath, 'utf-8');
+                const data = JSON.parse(dataStr);
                 if (now - data.createdAt > expiryMs) {
-                    fs.unlinkSync(filePath);
+                    await fs.promises.unlink(filePath);
                     cleaned++;
                 }
             } catch (e) {
-                // 文件损坏，删除
-                fs.unlinkSync(filePath);
-                cleaned++;
+                // 文件损坏或读取失败，尝试删除
+                try {
+                    await fs.promises.unlink(filePath);
+                    cleaned++;
+                } catch (unlinkErr) {
+                    // 文件可能已被其他进程删除，忽略
+                }
             }
         }
         
