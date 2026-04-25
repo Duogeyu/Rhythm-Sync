@@ -687,21 +687,36 @@ function switchGameSource(gameId, sourceId) {
 loadActiveConfig();
 
 // ============== 缓存函数 ==============
+const memoryCache = new Map();
+
 function getCacheFilePath(gameId) {
     return path.join(CACHE_DIR, `${gameId}.json`);
 }
 
 function readCache(gameId) {
+    // 检查内存缓存
+    if (memoryCache.has(gameId)) {
+        const cached = memoryCache.get(gameId);
+        if (Date.now() - cached.timestamp < CACHE_DURATION) {
+            console.log(`[缓存] ${gameId} 命中内存缓存 (${cached.songs.length}首)`);
+            return cached.songs;
+        } else {
+            console.log(`[缓存] ${gameId} 内存缓存过期`);
+            memoryCache.delete(gameId);
+        }
+    }
+
     const filePath = getCacheFilePath(gameId);
     if (!fs.existsSync(filePath)) return null;
 
     try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         if (Date.now() - data.timestamp < CACHE_DURATION) {
-            console.log(`[缓存] ${gameId} 命中缓存 (${data.songs.length}首)`);
+            console.log(`[缓存] ${gameId} 命中文件缓存 (${data.songs.length}首)`);
+            memoryCache.set(gameId, { timestamp: data.timestamp, songs: data.songs });
             return data.songs;
         }
-        console.log(`[缓存] ${gameId} 缓存过期`);
+        console.log(`[缓存] ${gameId} 文件缓存过期`);
         return null;
     } catch (e) {
         return null;
@@ -710,8 +725,13 @@ function readCache(gameId) {
 
 function writeCache(gameId, songs) {
     const filePath = getCacheFilePath(gameId);
+    const timestamp = Date.now();
+
+    // 更新内存缓存
+    memoryCache.set(gameId, { timestamp, songs });
+
     fs.writeFileSync(filePath, JSON.stringify({
-        timestamp: Date.now(),
+        timestamp,
         songs
     }));
     console.log(`[缓存] ${gameId} 已写入缓存 (${songs.length}首)`);
@@ -4593,6 +4613,9 @@ app.post('/api/admin/clear-cache', (req, res) => {
     
     try {
         if (gameId) {
+            // 清除指定游戏内存缓存
+            memoryCache.delete(gameId);
+
             // 清除指定游戏缓存
             const filePath = path.join(CACHE_DIR, `${gameId}.json`);
             if (fs.existsSync(filePath)) {
@@ -4603,6 +4626,9 @@ app.post('/api/admin/clear-cache', (req, res) => {
                 res.json({ success: true, message: `${gameId} 无缓存` });
             }
         } else {
+            // 清除所有内存缓存
+            memoryCache.clear();
+
             // 清除所有缓存
             if (fs.existsSync(CACHE_DIR)) {
                 const files = fs.readdirSync(CACHE_DIR);
