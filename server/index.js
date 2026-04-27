@@ -5,6 +5,7 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -233,6 +234,34 @@ function isSafeFilename(filename) {
         return false;
     }
     return true;
+}
+
+// 安全：防 SSRF 校验
+async function isValidExternalUrl(urlStr) {
+    try {
+        const u = new URL(urlStr);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+
+        // DNS 解析以防 SSRF 绕过
+        const { address } = await dns.promises.lookup(u.hostname);
+
+        // 屏蔽本地、回环、私有及链路本地地址
+        if (
+            address === '::1' ||
+            address.startsWith('127.') ||
+            address.startsWith('10.') ||
+            address.startsWith('192.168.') ||
+            address.startsWith('169.254.') ||
+            address.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
+            address.startsWith('0.')
+        ) {
+            return false;
+        }
+
+        return true;
+    } catch (e) {
+        return false;
+    }
 }
 
 // 提取经常在路径中使用的参数名，并应用安全校验
@@ -1649,6 +1678,7 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    if (!(await isValidExternalUrl(originalUrl))) return null;
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1767,6 +1797,10 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (originalUrl && !(await isValidExternalUrl(originalUrl))) {
+        return res.status(400).json({ error: '非法的外部 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -3010,11 +3044,15 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     let coverBase64 = null;
     if (song.coverUrl) {
         try {
-            const coverResp = await axios.get(song.coverUrl, { 
-                responseType: 'arraybuffer',
-                timeout: 5000 
-            });
-            coverBase64 = `data:image/png;base64,${Buffer.from(coverResp.data).toString('base64')}`;
+            if (await isValidExternalUrl(song.coverUrl)) {
+                const coverResp = await axios.get(song.coverUrl, {
+                    responseType: 'arraybuffer',
+                    timeout: 5000
+                });
+                coverBase64 = `data:${coverResp.headers['content-type']};base64,${Buffer.from(coverResp.data).toString('base64')}`;
+            } else {
+                console.warn(`[单曲图] 忽略非法的封面 URL: ${song.coverUrl}`);
+            }
         } catch (e) {
             console.warn('[单曲图] 封面获取失败:', e.message);
         }
