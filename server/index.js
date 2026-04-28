@@ -6,6 +6,7 @@ const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const dns = require('dns');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
 const {
@@ -19,6 +20,41 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// 防御 SSRF：校验 URL 是否指向外部安全地址，屏蔽内网与回环 IP
+async function isValidExternalUrl(urlStr) {
+    if (!urlStr) return false;
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+
+        const { address } = await dns.promises.lookup(parsed.hostname);
+
+        // 屏蔽内网和本地回环 IP
+        const parts = address.split('.');
+        if (parts.length === 4) {
+            const p0 = parseInt(parts[0], 10);
+            const p1 = parseInt(parts[1], 10);
+            if (
+                p0 === 127 ||
+                p0 === 10 ||
+                (p0 === 172 && p1 >= 16 && p1 <= 31) ||
+                (p0 === 192 && p1 === 168) ||
+                (p0 === 169 && p1 === 254)
+            ) {
+                return false;
+            }
+        } else if (address === '::1' || address.startsWith('fe80:') || address.startsWith('fc00:') || address.startsWith('fd00:')) {
+            return false;
+        }
+
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1650,6 +1686,12 @@ function isCoverCached(gameId, originalUrl) {
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
     
+    // SSRF防御: 确保是安全的外部地址
+    if (!(await isValidExternalUrl(originalUrl))) {
+        console.warn(`[安全] 拒绝下载不安全的封面URL (${gameId}):`, originalUrl);
+        return null;
+    }
+
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
     
@@ -1767,6 +1809,12 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    // SSRF防御: 确保是安全的外部地址
+    if (!(await isValidExternalUrl(originalUrl))) {
+        console.warn(`[安全] 拒绝按需下载不安全的封面URL:`, originalUrl);
+        return res.status(403).json({ error: '不安全的外部 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -3010,6 +3058,11 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     let coverBase64 = null;
     if (song.coverUrl) {
         try {
+            // SSRF防御: 确保是安全的外部地址
+            if (!(await isValidExternalUrl(song.coverUrl))) {
+                throw new Error('不安全的封面 URL');
+            }
+
             const coverResp = await axios.get(song.coverUrl, { 
                 responseType: 'arraybuffer',
                 timeout: 5000 
