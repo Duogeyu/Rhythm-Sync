@@ -2131,18 +2131,36 @@ function stringSimilarity(a, b) {
     if (a === b) return 1;
     // 包含关系
     if (a.includes(b) || b.includes(a)) return 0.8;
-    // Jaccard on bigrams
-    const bigrams = (s) => {
-        const set = new Set();
-        for (let i = 0; i < s.length - 1; i++) set.add(s.substring(i, i + 2));
-        return set;
-    };
-    const setA = bigrams(a);
-    const setB = bigrams(b);
-    if (setA.size === 0 || setB.size === 0) return 0;
+
+    // 性能优化: 避免使用 s.substring() 生成大量垃圾字符串对象
+    // 通过将两个 16位 字符编码合并为一个 32位 整数来表示 Bigram (内存和速度优化)
+    const aLen = a.length - 1;
+    const bLen = b.length - 1;
+    if (aLen <= 0 || bLen <= 0) return 0;
+
+    const setA = new Set();
+    for (let i = 0; i < aLen; i++) {
+        setA.add((a.charCodeAt(i) << 16) | a.charCodeAt(i + 1));
+    }
+
+    const sizeA = setA.size;
+    if (sizeA === 0) return 0;
+
     let intersection = 0;
-    for (const bg of setA) { if (setB.has(bg)) intersection++; }
-    return intersection / (setA.size + setB.size - intersection);
+    let sizeB = 0;
+    const setB = new Set();
+
+    for (let i = 0; i < bLen; i++) {
+        const bg = (b.charCodeAt(i) << 16) | b.charCodeAt(i + 1);
+        if (!setB.has(bg)) {
+            setB.add(bg);
+            sizeB++;
+            if (setA.has(bg)) intersection++;
+        }
+    }
+
+    if (sizeB === 0) return 0;
+    return intersection / (sizeA + sizeB - intersection);
 }
 
 // 从网易云搜索街机歌曲
