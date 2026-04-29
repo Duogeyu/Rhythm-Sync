@@ -8,6 +8,7 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const dns = require('dns');
 const {
     user_playlist,
     playlist_detail,
@@ -19,6 +20,48 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// 验证是否为安全的外部 URL，防止 SSRF
+async function isValidExternalUrl(urlString) {
+    if (!urlString) return false;
+    try {
+        const parsedUrl = new URL(urlString);
+        // 只允许 http 和 https 协议
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return false;
+        }
+
+        const hostname = parsedUrl.hostname;
+
+        // 执行 DNS 解析
+        const lookup = await dns.promises.lookup(hostname);
+        const ip = lookup.address;
+
+        // 拦截私有/本地 IP 地址
+        // 10.0.0.0/8
+        if (ip.startsWith('10.')) return false;
+        // 172.16.0.0/12
+        if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return false;
+        // 192.168.0.0/16
+        if (ip.startsWith('192.168.')) return false;
+        // 127.0.0.0/8 (Loopback)
+        if (ip.startsWith('127.')) return false;
+        // 169.254.0.0/16 (Link-local)
+        if (ip.startsWith('169.254.')) return false;
+        // 0.0.0.0/8
+        if (ip.startsWith('0.')) return false;
+        // IPv6 localhost
+        if (ip === '::1') return false;
+        // IPv6 unique local address
+        if (ip.toLowerCase().startsWith('fc') || ip.toLowerCase().startsWith('fd')) return false;
+        // IPv6 link local address
+        if (ip.toLowerCase().startsWith('fe8') || ip.toLowerCase().startsWith('fe9') || ip.toLowerCase().startsWith('fea') || ip.toLowerCase().startsWith('feb')) return false;
+
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1649,6 +1692,7 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    if (!(await isValidExternalUrl(originalUrl))) return null;
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1767,6 +1811,10 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!(await isValidExternalUrl(originalUrl))) {
+        return res.status(400).json({ error: '无效或不安全的URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -3010,6 +3058,9 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     let coverBase64 = null;
     if (song.coverUrl) {
         try {
+            if (!(await isValidExternalUrl(song.coverUrl))) {
+                throw new Error('无效或不安全的URL');
+            }
             const coverResp = await axios.get(song.coverUrl, { 
                 responseType: 'arraybuffer',
                 timeout: 5000 
