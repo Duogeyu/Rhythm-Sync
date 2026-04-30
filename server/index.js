@@ -8,6 +8,7 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const dns = require('dns');
 const {
     user_playlist,
     playlist_detail,
@@ -19,6 +20,41 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// 检查外部 URL，防止 SSRF 攻击
+async function isValidExternalUrl(urlStr) {
+    if (!urlStr || typeof urlStr !== 'string') return false;
+    try {
+        const parsedUrl = new URL(urlStr);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return false;
+        }
+
+        const hostname = parsedUrl.hostname;
+
+        // 解析 IP 以防止 DNS rebinding 和直接 IP 访问
+        const { address, family } = await dns.promises.lookup(hostname);
+
+        // 检查 IP 是否为内网/回环地址/链路本地地址/特殊地址
+        if (
+            address === '0.0.0.0' ||
+            address === '::1' ||
+            address.startsWith('127.') || // 整个 127.0.0.0/8 网段
+            address.startsWith('10.') ||
+            address.startsWith('192.168.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(address) ||
+            address.startsWith('169.254.') ||
+            address.startsWith('fc00:') ||
+            address.startsWith('fe80:')
+        ) {
+            return false;
+        }
+
+        return { address, family, parsedUrl };
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1646,9 +1682,13 @@ function isCoverCached(gameId, originalUrl) {
     return fs.existsSync(localPath);
 }
 
+const https = require('https');
+
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    const urlCheck = await isValidExternalUrl(originalUrl);
+    if (!urlCheck) return null;
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1663,16 +1703,24 @@ async function downloadAndCacheCover(gameId, originalUrl) {
         return localPath;
     }
     
+    // 防 TOCTOU：将 URL hostname 替换为已解析好的 IP
+    const { address, family, parsedUrl } = urlCheck;
+    const targetUrl = new URL(originalUrl);
+    targetUrl.hostname = family === 6 ? `[${address}]` : address;
+
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const response = await axios.get(targetUrl.href, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                    maxRedirects: 0, // 禁止重定向，防止通过 302 绕过 SSRF 检查
                 headers: {
+                    'Host': parsedUrl.hostname,
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
-                }
+                },
+                httpsAgent: new https.Agent({ servername: parsedUrl.hostname })
             });
             
             fs.writeFileSync(localPath, response.data);
@@ -1766,6 +1814,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+
+    const urlCheck = await isValidExternalUrl(originalUrl);
+    if (!urlCheck) {
+        return res.status(400).json({ error: '无效的封面 URL' });
+    }
     
     // 按需下载
     try {
@@ -1777,13 +1830,21 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
+        // 防 TOCTOU
+        const { address, family, parsedUrl } = urlCheck;
+        const targetUrl = new URL(originalUrl);
+        targetUrl.hostname = family === 6 ? `[${address}]` : address;
+
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(targetUrl.href, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0, // 禁止重定向
             headers: {
+                'Host': parsedUrl.hostname,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+            },
+            httpsAgent: new https.Agent({ servername: parsedUrl.hostname })
         });
         
         // 保存到本地
@@ -3008,11 +3069,22 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     
     // 获取封面图片 Base64
     let coverBase64 = null;
-    if (song.coverUrl) {
+    let urlCheck;
+    if (song.coverUrl && (urlCheck = await isValidExternalUrl(song.coverUrl))) {
         try {
-            const coverResp = await axios.get(song.coverUrl, { 
+            // 防 TOCTOU
+            const { address, family, parsedUrl } = urlCheck;
+            const targetUrl = new URL(song.coverUrl);
+            targetUrl.hostname = family === 6 ? `[${address}]` : address;
+
+            const coverResp = await axios.get(targetUrl.href, {
                 responseType: 'arraybuffer',
-                timeout: 5000 
+                timeout: 5000,
+                maxRedirects: 0, // 禁止重定向
+                headers: {
+                    'Host': parsedUrl.hostname
+                },
+                httpsAgent: new https.Agent({ servername: parsedUrl.hostname })
             });
             coverBase64 = `data:image/png;base64,${Buffer.from(coverResp.data).toString('base64')}`;
         } catch (e) {
