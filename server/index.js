@@ -18,6 +18,9 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+const dns = require('dns');
+const https = require('https');
+
 // ============== 安全过滤函数 ==============
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
@@ -123,6 +126,50 @@ const PLATFORM_PATTERNS = {
         isShortLink: (url) => url.includes('b23.tv')
     }
 };
+
+// 检查并解析外部 URL 以防止 SSRF
+async function isValidExternalUrl(urlString) {
+    if (!urlString) return { valid: false };
+
+    try {
+        const parsedUrl = new URL(urlString);
+
+        // 1. 协议检查
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return { valid: false, error: '只允许 http 和 https 协议' };
+        }
+
+        // 2. DNS 解析
+        const hostname = parsedUrl.hostname;
+        const addresses = await dns.promises.lookup(hostname);
+        let ip = addresses.address;
+
+        // 处理 IPv4 映射的 IPv6 地址
+        if (ip.startsWith('::ffff:')) {
+            ip = ip.substring(7);
+        }
+
+        // 3. 检查是否为内部 IP
+        if (
+            ip.startsWith('127.') ||
+            ip === '0.0.0.0' ||
+            ip === '::1' ||
+            ip.startsWith('10.') ||
+            ip.startsWith('192.168.') ||
+            ip.startsWith('169.254.') ||
+            (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31) ||
+            ip.startsWith('fc00:') ||
+            ip.startsWith('fd00:') ||
+            ip.startsWith('fe80:')
+        ) {
+            return { valid: false, error: '禁止访问内部 IP' };
+        }
+
+        return { valid: true, ip, parsedUrl };
+    } catch (e) {
+        return { valid: false, error: 'URL 无效或解析失败' };
+    }
+}
 
 // 解析输入内容，自动识别平台
 function parseInput(input) {
@@ -1767,6 +1814,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    // 检查并解析外部 URL 以防 SSRF
+    const urlCheck = await isValidExternalUrl(originalUrl);
+    if (!urlCheck.valid) {
+        console.warn(`[安全] 拒绝不安全的封面下载 URL: ${originalUrl} - ${urlCheck.error}`);
+        return res.status(400).json({ error: '不安全的封面下载 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1777,14 +1831,27 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
-        // 下载封面
-        const response = await axios.get(originalUrl, {
+        // 构建安全的请求参数，使用解析到的 IP 和保留原始 host 以及 SNI，防止 TOCTOU
+        const isIpv6 = urlCheck.ip.includes(':');
+        const formattedIp = isIpv6 ? `[${urlCheck.ip}]` : urlCheck.ip;
+        const portSuffix = urlCheck.parsedUrl.port ? `:${urlCheck.parsedUrl.port}` : '';
+        const safeUrl = `${urlCheck.parsedUrl.protocol}//${formattedIp}${portSuffix}${urlCheck.parsedUrl.pathname}${urlCheck.parsedUrl.search}`;
+        const axiosConfig = {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0, // 不自动重定向，防止通过 302 绕过
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Host': urlCheck.parsedUrl.host
             }
-        });
+        };
+
+        if (urlCheck.parsedUrl.protocol === 'https:') {
+            axiosConfig.httpsAgent = new https.Agent({ servername: urlCheck.parsedUrl.hostname });
+        }
+
+        // 下载封面
+        const response = await axios.get(safeUrl, axiosConfig);
         
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
@@ -1798,7 +1865,14 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
+
+        // 如果是 302，说明后端想重定向，安全考虑，不要跟随，或者可以选择安全处理
+        if (error.response && error.response.status >= 300 && error.response.status < 400) {
+            console.error(`[封面] 下载尝试重定向，为了安全拒绝跟随`);
+            return res.status(400).json({ error: '封面下载失败，遇到重定向' });
+        }
+
+        // 下载失败时重定向到原始 URL (让前端去处理)
         res.redirect(originalUrl);
     }
 });
