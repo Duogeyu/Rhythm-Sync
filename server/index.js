@@ -8,6 +8,8 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const dns = require('dns');
+const https = require('https');
 const {
     user_playlist,
     playlist_detail,
@@ -40,6 +42,62 @@ function sanitizeInput(input) {
 }
 
 // 从混合文本中提取 URL
+// 检查并解析外部 URL 以防止 SSRF 和 TOCTOU 攻击
+async function isValidExternalUrl(urlString) {
+    try {
+        const parsedUrl = new URL(urlString);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return false;
+        }
+
+        const hostname = parsedUrl.hostname;
+        const lookup = await dns.promises.lookup(hostname);
+        let ip = lookup.address;
+
+        // 规范化 IPv4 映射的 IPv6 地址
+        if (ip.startsWith('::ffff:')) {
+            ip = ip.substring(7);
+        }
+
+        // 检查是否是内部 IP 或保留 IP
+        const parts = ip.split('.');
+        if (parts.length === 4) {
+            const p1 = parseInt(parts[0], 10);
+            const p2 = parseInt(parts[1], 10);
+
+            if (
+                p1 === 0 || // 0.0.0.0
+                p1 === 10 || // 10.0.0.0/8
+                p1 === 127 || // 127.0.0.0/8
+                (p1 === 172 && p2 >= 16 && p2 <= 31) || // 172.16.0.0/12
+                (p1 === 192 && p2 === 168) || // 192.168.0.0/16
+                (p1 === 169 && p2 === 254) // 169.254.0.0/16
+            ) {
+                return false;
+            }
+        } else {
+            // IPv6 检查
+            const ipLower = ip.toLowerCase();
+            if (
+                ipLower === '::' ||
+                ipLower === '::1' ||
+                ipLower.startsWith('fc') || // fc00::/7 (fc, fd)
+                ipLower.startsWith('fd') ||
+                ipLower.startsWith('fe8') || // fe80::/10 (fe8, fe9, fea, feb)
+                ipLower.startsWith('fe9') ||
+                ipLower.startsWith('fea') ||
+                ipLower.startsWith('feb')
+            ) {
+                return false;
+            }
+        }
+
+        return { ip, protocol: parsedUrl.protocol, host: parsedUrl.host, hostname: parsedUrl.hostname, port: parsedUrl.port, pathname: parsedUrl.pathname, search: parsedUrl.search };
+    } catch (e) {
+        return false;
+    }
+}
+
 function extractUrlFromText(text) {
     // 匹配常见 URL 格式
     const urlPattern = /https?:\/\/[^\s<>"'()（）\[\]【】]+/gi;
@@ -1767,6 +1825,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    const parsedUrlInfo = await isValidExternalUrl(originalUrl);
+    if (!parsedUrlInfo) {
+        return res.status(400).json({ error: '无效的外部 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1777,15 +1840,59 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
-        // 下载封面
-        const response = await axios.get(originalUrl, {
-            responseType: 'arraybuffer',
-            timeout: coversConfig.timeout,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        const portStr = parsedUrlInfo.port ? `:${parsedUrlInfo.port}` : '';
+        const isIpv6 = parsedUrlInfo.ip.includes(':');
+        const formattedIp = isIpv6 ? `[${parsedUrlInfo.ip}]` : parsedUrlInfo.ip;
+        const secureUrl = `${parsedUrlInfo.protocol}//${formattedIp}${portStr}${parsedUrlInfo.pathname}${parsedUrlInfo.search}`;
+
+        // 下载封面（处理重定向）
+        let response;
+        let currentUrl = secureUrl;
+        let currentHost = parsedUrlInfo.host;
+        let currentHostname = parsedUrlInfo.hostname;
+        let currentProtocol = parsedUrlInfo.protocol;
+
+        for (let redirects = 0; redirects < 5; redirects++) {
+            response = await axios.get(currentUrl, {
+                responseType: 'arraybuffer',
+                timeout: coversConfig.timeout,
+                maxRedirects: 0,
+                validateStatus: status => status >= 200 && status < 400,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Host': currentHost
+                },
+                httpsAgent: currentProtocol === 'https:' ? new https.Agent({ servername: currentHostname }) : undefined
+            });
+
+            if (response.status >= 300 && response.status < 400 && response.headers.location) {
+                // 处理重定向
+                let redirectUrl = response.headers.location;
+                // 解析相对重定向
+                if (!redirectUrl.startsWith('http')) {
+                   redirectUrl = new URL(redirectUrl, currentUrl).href;
+                }
+
+                const nextParsedUrlInfo = await isValidExternalUrl(redirectUrl);
+                if (!nextParsedUrlInfo) {
+                    throw new Error('重定向到无效或不安全的外部 URL');
+                }
+                const nextIsIpv6 = nextParsedUrlInfo.ip.includes(':');
+                const nextFormattedIp = nextIsIpv6 ? `[${nextParsedUrlInfo.ip}]` : nextParsedUrlInfo.ip;
+                const nextPortStr = nextParsedUrlInfo.port ? `:${nextParsedUrlInfo.port}` : '';
+                currentUrl = `${nextParsedUrlInfo.protocol}//${nextFormattedIp}${nextPortStr}${nextParsedUrlInfo.pathname}${nextParsedUrlInfo.search}`;
+                currentHost = nextParsedUrlInfo.host;
+                currentHostname = nextParsedUrlInfo.hostname;
+                currentProtocol = nextParsedUrlInfo.protocol;
+                continue;
             }
-        });
+            break;
+        }
         
+        if (response.status >= 300) {
+            throw new Error(`请求失败，状态码: ${response.status}`);
+        }
+
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
         console.log(`[封面] 缓存成功 ${gameId}: ${fileName}`);
