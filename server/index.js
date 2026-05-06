@@ -2134,7 +2134,8 @@ function stringSimilarity(a, b) {
     // Jaccard on bigrams
     const bigrams = (s) => {
         const set = new Set();
-        for (let i = 0; i < s.length - 1; i++) set.add(s.substring(i, i + 2));
+        // Optimize memory and GC by bitwise packing character codes instead of string allocation
+        for (let i = 0; i < s.length - 1; i++) set.add((s.charCodeAt(i) << 16) | s.charCodeAt(i + 1));
         return set;
     };
     const setA = bigrams(a);
