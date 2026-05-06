@@ -8,6 +8,8 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const dns = require('dns');
+const https = require('https');
 const {
     user_playlist,
     playlist_detail,
@@ -233,6 +235,37 @@ function isSafeFilename(filename) {
         return false;
     }
     return true;
+}
+
+// 校验外部 URL 以防止 SSRF 和 DNS Rebinding 攻击
+async function isValidExternalUrl(urlStr) {
+    try {
+        const parsedUrl = new URL(urlStr);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return false;
+        }
+
+        const lookupResult = await dns.promises.lookup(parsedUrl.hostname);
+        let ip = lookupResult.address;
+
+        if (ip.startsWith('::ffff:')) {
+            ip = ip.substring(7);
+        }
+
+        const isInternal =
+            ip === '0.0.0.0' || ip === '255.255.255.255' ||
+            ip.startsWith('127.') || ip.startsWith('169.254.') ||
+            ip.startsWith('10.') || ip.startsWith('192.168.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip) ||
+            ip === '::1' || /^fd[0-9a-f]{2}:/.test(ip) || /^fe80:/.test(ip);
+
+        if (isInternal) {
+            return false;
+        }
+        return ip;
+    } catch (e) {
+        return false;
+    }
 }
 
 // 提取经常在路径中使用的参数名，并应用安全校验
@@ -1663,15 +1696,28 @@ async function downloadAndCacheCover(gameId, originalUrl) {
         return localPath;
     }
     
+    const resolvedIp = await isValidExternalUrl(originalUrl);
+    if (!resolvedIp) {
+        console.warn(`[封面] 拒绝下载非法的外部 URL (${gameId}): ${originalUrl}`);
+        return null;
+    }
+
+    const parsedUrl = new URL(originalUrl);
+    const ipHost = resolvedIp.includes(':') ? `[${resolvedIp}]` : resolvedIp;
+    const secureUrl = `${parsedUrl.protocol}//${ipHost}${parsedUrl.port ? ':' + parsedUrl.port : ''}${parsedUrl.pathname}${parsedUrl.search}`;
+
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const response = await axios.get(secureUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                maxRedirects: 0,
+                httpsAgent: new https.Agent({ servername: parsedUrl.hostname }),
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': originalUrl
+                    'Referer': originalUrl,
+                    'Host': parsedUrl.host
                 }
             });
             
@@ -1771,18 +1817,32 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
         
+        const resolvedIp = await isValidExternalUrl(originalUrl);
+        if (!resolvedIp) {
+            console.warn(`[封面] 拒绝下载非法的外部 URL (${gameId}): ${originalUrl}`);
+            return res.status(403).json({ error: '非法的外部 URL' });
+        }
+
         // 确保目录存在
         const gameDir = path.join(COVERS_DIR, gameId);
         if (!fs.existsSync(gameDir)) {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
+        const parsedUrl = new URL(originalUrl);
+        const ipHost = resolvedIp.includes(':') ? `[${resolvedIp}]` : resolvedIp;
+        const secureUrl = `${parsedUrl.protocol}//${ipHost}${parsedUrl.port ? ':' + parsedUrl.port : ''}${parsedUrl.pathname}${parsedUrl.search}`;
+
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(secureUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0,
+            httpsAgent: new https.Agent({ servername: parsedUrl.hostname }),
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Host': parsedUrl.host,
+                'Referer': originalUrl
             }
         });
         
