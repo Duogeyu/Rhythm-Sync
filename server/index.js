@@ -1,4 +1,6 @@
 const express = require('express');
+const dns = require('dns');
+const https = require('https');
 const cors = require('cors');
 const axios = require('axios');
 const fuzzysort = require('fuzzysort');
@@ -223,6 +225,51 @@ function parseInput(input) {
 
 const app = express();
 const PORT = 3002;
+
+
+// ================== SSRF 保护 ==================
+function isPrivateIP(ip) {
+    if (ip === '0.0.0.0' || ip === '::' || ip === '127.0.0.1' || ip === '::1') return true;
+    if (ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
+    const parts = ip.split('.').map(Number);
+    if (parts.length === 4) {
+        if (parts[0] === 10) return true;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        if (parts[0] === 192 && parts[1] === 168) return true;
+        if (parts[0] === 169 && parts[1] === 254) return true;
+        if (parts[0] === 127) return true;
+    }
+    return false;
+}
+
+async function isValidExternalUrl(urlString) {
+    try {
+        const parsedUrl = new URL(urlString);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return { isSafe: false, reason: 'Invalid protocol' };
+        }
+
+        return new Promise((resolve) => {
+            dns.lookup(parsedUrl.hostname, (err, address, family) => {
+                if (err) return resolve({ isSafe: false, reason: 'DNS lookup failed' });
+                if (isPrivateIP(address)) return resolve({ isSafe: false, reason: 'Private IP' });
+
+                const resolvedHost = family === 6 ? `[${address}]` : address;
+                const newUrl = new URL(urlString);
+                newUrl.hostname = resolvedHost;
+
+                resolve({
+                    isSafe: true,
+                    resolvedUrl: newUrl.toString(),
+                    originalHost: parsedUrl.hostname,
+                    protocol: parsedUrl.protocol
+                });
+            });
+        });
+    } catch (e) {
+        return { isSafe: false, reason: 'Invalid URL' };
+    }
+}
 
 // ================== 安全配置 ==================
 // 安全：校验文件名和ID，防止路径穿越攻击
@@ -1666,14 +1713,25 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const urlCheck = await isValidExternalUrl(originalUrl);
+            if (!urlCheck.isSafe) return null;
+
+            const requestOptions = {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                maxRedirects: 0,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': originalUrl
+                    'Referer': originalUrl,
+                    'Host': urlCheck.originalHost
                 }
-            });
+            };
+
+            if (urlCheck.protocol === 'https:') {
+                requestOptions.httpsAgent = new https.Agent({ servername: urlCheck.originalHost });
+            }
+
+            const response = await axios.get(urlCheck.resolvedUrl, requestOptions);
             
             fs.writeFileSync(localPath, response.data);
             return localPath;
@@ -1767,6 +1825,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    // SSRF 保护：验证外部 URL
+    const urlCheck = await isValidExternalUrl(originalUrl);
+    if (!urlCheck.isSafe) {
+        console.warn(`[安全] SSRF 拦截: ${originalUrl} (${urlCheck.reason})`);
+        return res.status(400).json({ error: '无效的图片地址' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1777,14 +1842,23 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
-        // 下载封面
-        const response = await axios.get(originalUrl, {
+        // 下载封面（使用解析后的 IP 防止 DNS 重新绑定，并保留原始 Host）
+        const requestOptions = {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0, // 禁止重定向，防止通过重定向绕过 SSRF 检查
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Host': urlCheck.originalHost
             }
-        });
+        };
+
+        // 如果是 HTTPS，需要设置 ServerName (SNI)
+        if (urlCheck.protocol === 'https:') {
+            requestOptions.httpsAgent = new https.Agent({ servername: urlCheck.originalHost });
+        }
+
+        const response = await axios.get(urlCheck.resolvedUrl, requestOptions);
         
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
