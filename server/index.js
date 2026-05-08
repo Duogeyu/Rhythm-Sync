@@ -6,6 +6,8 @@ const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const dns = require('dns');
+const https = require('https');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
 const {
@@ -37,6 +39,47 @@ function sanitizeInput(input) {
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''); // 移除控制字符
     
     return sanitized.trim();
+}
+
+// 验证外部 URL 并返回解析后的 IP (防止 SSRF 和 TOCTOU DNS Rebinding)
+async function isValidExternalUrl(urlStr) {
+    try {
+        const parsedUrl = new URL(urlStr);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return false;
+        }
+
+        const hostname = parsedUrl.hostname;
+
+        // 解析域名获取 IP
+        const lookupResult = await dns.promises.lookup(hostname);
+        let ip = lookupResult.address;
+
+        // 移除 IPv4 映射前缀
+        if (ip.startsWith('::ffff:')) {
+            ip = ip.replace('::ffff:', '');
+        }
+
+        // 检查禁止的 IP
+        const isForbidden =
+            ip === '0.0.0.0' ||
+            ip.startsWith('127.') ||
+            ip.startsWith('169.254.') ||
+            ip.startsWith('10.') ||
+            ip.startsWith('192.168.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip) ||
+            ip === '::1' ||
+            ip.toLowerCase() === '::' ||
+            ip.toLowerCase().startsWith('fe80:');
+
+        if (isForbidden) {
+            return false;
+        }
+
+        return ip;
+    } catch (e) {
+        return false;
+    }
 }
 
 // 从混合文本中提取 URL
@@ -1662,17 +1705,32 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     if (fs.existsSync(localPath)) {
         return localPath;
     }
+
+    // 验证原始 URL 防御 SSRF 和 TOCTOU 攻击
+    const resolvedIp = await isValidExternalUrl(originalUrl);
+    if (!resolvedIp) {
+        console.error(`[安全] 拒绝非法或内部的原始 URL 请求: ${originalUrl}`);
+        return null;
+    }
+
+    const parsedOriginalUrl = new URL(originalUrl);
+    const portStr = parsedOriginalUrl.port ? `:${parsedOriginalUrl.port}` : '';
+    const ipFormat = resolvedIp.includes(':') ? `[${resolvedIp}]` : resolvedIp;
+    const rewrittenUrl = `${parsedOriginalUrl.protocol}//${ipFormat}${portStr}${parsedOriginalUrl.pathname}${parsedOriginalUrl.search}`;
     
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const response = await axios.get(rewrittenUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                maxRedirects: 0,
                 headers: {
+                    'Host': parsedOriginalUrl.hostname,
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
-                }
+                },
+                httpsAgent: parsedOriginalUrl.protocol === 'https:' ? new https.Agent({ servername: parsedOriginalUrl.hostname }) : undefined
             });
             
             fs.writeFileSync(localPath, response.data);
@@ -1766,6 +1824,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+
+    // 验证原始 URL 防御 SSRF 和 TOCTOU 攻击
+    const resolvedIp = await isValidExternalUrl(originalUrl);
+    if (!resolvedIp) {
+        console.error(`[安全] 拒绝非法或内部的原始 URL 请求: ${originalUrl}`);
+        return res.status(403).json({ error: '无效或禁止的外部 URL' });
+    }
     
     // 按需下载
     try {
@@ -1777,13 +1842,21 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
+        const parsedOriginalUrl = new URL(originalUrl);
+        const portStr = parsedOriginalUrl.port ? `:${parsedOriginalUrl.port}` : '';
+        const ipFormat = resolvedIp.includes(':') ? `[${resolvedIp}]` : resolvedIp;
+        const rewrittenUrl = `${parsedOriginalUrl.protocol}//${ipFormat}${portStr}${parsedOriginalUrl.pathname}${parsedOriginalUrl.search}`;
+
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(rewrittenUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0,
             headers: {
+                'Host': parsedOriginalUrl.hostname,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+            },
+            httpsAgent: parsedOriginalUrl.protocol === 'https:' ? new https.Agent({ servername: parsedOriginalUrl.hostname }) : undefined
         });
         
         // 保存到本地
