@@ -8,6 +8,8 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const dns = require('dns');
+const https = require('https');
 const {
     user_playlist,
     playlist_detail,
@@ -19,6 +21,42 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// 验证外部 URL 防止 SSRF
+async function isValidExternalUrl(urlString) {
+    try {
+        const parsed = new URL(urlString);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+
+        const { address } = await dns.promises.lookup(parsed.hostname);
+
+        let ip = address;
+        if (ip.startsWith('::ffff:')) {
+            ip = ip.substring(7);
+        }
+
+        if (
+            ip === '0.0.0.0' ||
+            ip.startsWith('127.') ||
+            ip.startsWith('10.') ||
+            (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31) ||
+            ip.startsWith('192.168.') ||
+            ip.startsWith('169.254.') ||
+            ip === '::1' ||
+            ip.toLowerCase().startsWith('fc00:') ||
+            ip.toLowerCase().startsWith('fd00:') ||
+            ip.toLowerCase().startsWith('fe80:')
+        ) {
+            return false;
+        }
+
+        return ip;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1771,17 +1809,34 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
         
+        // 验证 URL 防 SSRF
+        const resolvedIp = await isValidExternalUrl(originalUrl);
+        if (!resolvedIp) {
+            console.warn(`[安全] 拒绝下载不安全的封面 URL: ${originalUrl}`);
+            return res.status(400).json({ error: '无效或不安全的外部 URL' });
+        }
+
         // 确保目录存在
         const gameDir = path.join(COVERS_DIR, gameId);
         if (!fs.existsSync(gameDir)) {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
+        const parsedUrl = new URL(originalUrl);
+        const safeIp = resolvedIp.includes(':') ? `[${resolvedIp}]` : resolvedIp;
+        const portSuffix = parsedUrl.port ? `:${parsedUrl.port}` : '';
+        const safeUrl = `${parsedUrl.protocol}//${safeIp}${portSuffix}${parsedUrl.pathname}${parsedUrl.search}`;
+
+        const httpsAgent = parsedUrl.protocol === 'https:' ? new https.Agent({ servername: parsedUrl.hostname }) : undefined;
+
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(safeUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0,
+            httpsAgent,
             headers: {
+                'Host': parsedUrl.host,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
