@@ -3304,16 +3304,25 @@ app.get('/api/random', async (req, res) => {
             targetGames = [game];
         }
         
-        // 获取歌曲
+        // 性能优化：并行获取歌曲
         let allSongs = [];
-        for (const gameId of targetGames) {
-            try {
-                const songs = await fetchGameSongs(gameId);
+        const songResults = await Promise.all(
+            targetGames.map(async (gameId) => {
+                try {
+                    return await fetchGameSongs(gameId);
+                } catch (e) {
+                    console.warn(`[随机] 获取 ${gameId} 失败: ${e.message}`);
+                    return [];
+                }
+            })
+        );
+
+        // 合并所有游戏的歌曲
+        songResults.forEach(songs => {
+            if (songs && songs.length > 0) {
                 allSongs = allSongs.concat(songs);
-            } catch (e) {
-                console.warn(`[随机] 获取 ${gameId} 失败: ${e.message}`);
             }
-        }
+        });
         
         if (allSongs.length === 0) {
             return res.status(500).json({ success: false, error: '无法获取歌曲数据' });
@@ -3566,42 +3575,57 @@ app.get('/api/search', async (req, res) => {
         }
         
         const results = {};
-        let totalMatches = 0;
         
-        for (const gameId of targetGames) {
-            try {
-                const songs = await fetchGameSongs(gameId);
-                
-                // 使用 fuzzysort 进行模糊搜索
-                const fuzzied = fuzzysort.go(query, songs, {
-                    keys: ['title', 'artist'],
-                    limit: resultLimit,
-                    threshold: -10000
-                });
-                
-                if (fuzzied.length > 0) {
-                    results[gameId] = {
-                        gameName: GAME_CONFIG[gameId].name,
-                        count: fuzzied.length,
-                        matches: fuzzied.map(r => ({
-                            score: r.score,
-                            song: {
-                                id: r.obj.id,
-                                title: r.obj.title,
-                                artist: r.obj.artist,
-                                category: r.obj.category,
-                                coverUrl: r.obj.coverUrl,
-                                charts: r.obj.charts || [],
-                                levels: r.obj.levels || []
+        // 性能优化：并行获取所有游戏数据并搜索
+        const matchResults = await Promise.all(
+            targetGames.map(async (gameId) => {
+                try {
+                    const songs = await fetchGameSongs(gameId);
+
+                    // 使用 fuzzysort 进行模糊搜索
+                    const fuzzied = fuzzysort.go(query, songs, {
+                        keys: ['title', 'artist'],
+                        limit: resultLimit,
+                        threshold: -10000
+                    });
+
+                    if (fuzzied.length > 0) {
+                        return {
+                            gameId,
+                            data: {
+                                gameName: GAME_CONFIG[gameId].name,
+                                count: fuzzied.length,
+                                matches: fuzzied.map(r => ({
+                                    score: r.score,
+                                    song: {
+                                        id: r.obj.id,
+                                        title: r.obj.title,
+                                        artist: r.obj.artist,
+                                        category: r.obj.category,
+                                        coverUrl: r.obj.coverUrl,
+                                        charts: r.obj.charts || [],
+                                        levels: r.obj.levels || []
+                                    }
+                                }))
                             }
-                        }))
-                    };
-                    totalMatches += fuzzied.length;
+                        };
+                    }
+                } catch (e) {
+                    console.warn(`[搜索] 获取 ${gameId} 失败: ${e.message}`);
                 }
-            } catch (e) {
-                console.warn(`[搜索] 获取 ${gameId} 失败: ${e.message}`);
+                return null;
+            })
+        );
+
+        // 聚合结果
+        matchResults.forEach(res => {
+            if (res) {
+                results[res.gameId] = res.data;
             }
-        }
+        });
+
+        // 计算总匹配数 (从 results 对象统计，避免并发竞争)
+        const totalMatches = Object.values(results).reduce((sum, item) => sum + item.count, 0);
         
         res.json({
             success: true,
@@ -3651,62 +3675,65 @@ app.get('/api/check', async (req, res) => {
         const normalizedArtist = artist ? normalizeTitle(artist) : null;
         
         const matches = {};
-        let foundInGames = 0;
         
-        for (const [gameId, config] of Object.entries(GAME_CONFIG)) {
-            try {
-                const songs = await fetchGameSongs(gameId);
-                
-                // 精确匹配优先
-                let match = songs.find(s => normalizeTitle(s.title) === normalizedTitle);
-                
-                // 如果有艺术家，还要匹配艺术家
-                if (match && normalizedArtist) {
-                    const artistMatch = normalizeTitle(match.artist).includes(normalizedArtist) ||
-                                       normalizedArtist.includes(normalizeTitle(match.artist));
-                    if (!artistMatch) {
-                        // 艺术家不匹配，尝试找更精确的
-                        const betterMatch = songs.find(s => 
-                            normalizeTitle(s.title) === normalizedTitle &&
-                            (normalizeTitle(s.artist).includes(normalizedArtist) ||
-                             normalizedArtist.includes(normalizeTitle(s.artist)))
-                        );
-                        if (betterMatch) match = betterMatch;
-                    }
-                }
-                
-                // 如果没有精确匹配，尝试模糊匹配
-                if (!match) {
-                    const fuzzied = fuzzysort.go(title, songs, {
-                        key: 'title',
-                        limit: 1,
-                        threshold: -5000
-                    });
-                    if (fuzzied.length > 0 && fuzzied[0].score > -1000) {
-                        match = fuzzied[0].obj;
-                    }
-                }
-                
-                if (match) {
-                    matches[gameId] = {
-                        gameName: config.name,
-                        found: true,
-                        song: {
-                            id: match.id,
-                            title: match.title,
-                            artist: match.artist,
-                            category: match.category,
-                            coverUrl: match.coverUrl,
-                            charts: match.charts || [],
-                            levels: match.levels || []
+        // 性能优化：并行获取所有游戏数据
+        await Promise.all(
+            Object.entries(GAME_CONFIG).map(async ([gameId, config]) => {
+                try {
+                    const songs = await fetchGameSongs(gameId);
+
+                    // 精确匹配优先
+                    let match = songs.find(s => normalizeTitle(s.title) === normalizedTitle);
+
+                    // 如果有艺术家，还要匹配艺术家
+                    if (match && normalizedArtist) {
+                        const artistMatch = normalizeTitle(match.artist).includes(normalizedArtist) ||
+                                           normalizedArtist.includes(normalizeTitle(match.artist));
+                        if (!artistMatch) {
+                            // 艺术家不匹配，尝试找更精确的
+                            const betterMatch = songs.find(s =>
+                                normalizeTitle(s.title) === normalizedTitle &&
+                                (normalizeTitle(s.artist).includes(normalizedArtist) ||
+                                 normalizedArtist.includes(normalizeTitle(s.artist)))
+                            );
+                            if (betterMatch) match = betterMatch;
                         }
-                    };
-                    foundInGames++;
+                    }
+
+                    // 如果没有精确匹配，尝试模糊匹配
+                    if (!match) {
+                        const fuzzied = fuzzysort.go(title, songs, {
+                            key: 'title',
+                            limit: 1,
+                            threshold: -5000
+                        });
+                        if (fuzzied.length > 0 && fuzzied[0].score > -1000) {
+                            match = fuzzied[0].obj;
+                        }
+                    }
+
+                    if (match) {
+                        matches[gameId] = {
+                            gameName: config.name,
+                            found: true,
+                            song: {
+                                id: match.id,
+                                title: match.title,
+                                artist: match.artist,
+                                category: match.category,
+                                coverUrl: match.coverUrl,
+                                charts: match.charts || [],
+                                levels: match.levels || []
+                            }
+                        };
+                    }
+                } catch (e) {
+                    console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
                 }
-            } catch (e) {
-                console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
-            }
-        }
+            })
+        );
+
+        const foundInGames = Object.keys(matches).length;
         
         res.json({
             success: true,
@@ -4822,14 +4849,21 @@ app.post('/api/admin/prefetch', async (req, res) => {
     
     const results = {};
     
-    for (const gameId of targetGames) {
-        try {
-            const songs = await fetchGameSongs(gameId);
-            results[gameId] = { success: true, songCount: songs.length };
-        } catch (error) {
-            results[gameId] = { success: false, error: error.message };
-        }
-    }
+    // 性能优化：并行预取数据
+    const prefetchResults = await Promise.all(
+        targetGames.map(async (gameId) => {
+            try {
+                const songs = await fetchGameSongs(gameId);
+                return { gameId, data: { success: true, songCount: songs.length } };
+            } catch (error) {
+                return { gameId, data: { success: false, error: error.message } };
+            }
+        })
+    );
+
+    prefetchResults.forEach(res => {
+        results[res.gameId] = res.data;
+    });
     
     res.json({ success: true, results });
 });
