@@ -224,7 +224,52 @@ function parseInput(input) {
 const app = express();
 const PORT = 3002;
 
+const dns = require('dns');
+const https = require('https');
+
 // ================== 安全配置 ==================
+// 安全：防 SSRF 及 DNS rebinding
+async function isValidExternalUrl(urlStr) {
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return { valid: false };
+        }
+
+        const lookup = await dns.promises.lookup(parsed.hostname);
+        const ip = lookup.address;
+        const normalizedIp = ip.startsWith('::ffff:') ? ip.substring(7) : ip;
+
+        if (
+            normalizedIp === '0.0.0.0' ||
+            normalizedIp.startsWith('127.') ||
+            normalizedIp === '::1' ||
+            normalizedIp.startsWith('10.') ||
+            normalizedIp.startsWith('192.168.') ||
+            normalizedIp.startsWith('169.254.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(normalizedIp) ||
+            normalizedIp.startsWith('fc00:') ||
+            normalizedIp.startsWith('fd00:')
+        ) {
+            return { valid: false };
+        }
+
+        const ipUrl = new URL(urlStr);
+        ipUrl.hostname = ip.includes(':') ? `[${ip}]` : ip;
+        // 保持原始端口
+        ipUrl.port = parsed.port;
+
+        return {
+            valid: true,
+            resolvedUrl: ipUrl.toString(),
+            hostHeader: parsed.host,
+            servername: parsed.hostname
+        };
+    } catch (e) {
+        return { valid: false };
+    }
+}
+
 // 安全：校验文件名和ID，防止路径穿越攻击
 function isSafeFilename(filename) {
     if (typeof filename !== 'string') return false;
@@ -1663,13 +1708,23 @@ async function downloadAndCacheCover(gameId, originalUrl) {
         return localPath;
     }
     
+    // 验证原始 URL
+    const urlValidation = await isValidExternalUrl(originalUrl);
+    if (!urlValidation.valid) {
+        console.warn(`[封面] 非法的封面 URL (${gameId}): ${originalUrl.slice(0, 50)}...`);
+        return null;
+    }
+
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const response = await axios.get(urlValidation.resolvedUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                maxRedirects: 0,
+                httpsAgent: new https.Agent({ servername: urlValidation.servername }),
                 headers: {
+                    'Host': urlValidation.hostHeader,
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
                 }
@@ -1767,6 +1822,12 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    // 验证原始 URL
+    const urlValidation = await isValidExternalUrl(originalUrl);
+    if (!urlValidation.valid) {
+        return res.status(400).json({ error: '非法的封面 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1778,10 +1839,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         }
         
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(urlValidation.resolvedUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0,
+            httpsAgent: new https.Agent({ servername: urlValidation.servername }),
             headers: {
+                'Host': urlValidation.hostHeader,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
@@ -3010,9 +3074,18 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     let coverBase64 = null;
     if (song.coverUrl) {
         try {
-            const coverResp = await axios.get(song.coverUrl, { 
+            const urlValidation = await isValidExternalUrl(song.coverUrl);
+            if (!urlValidation.valid) {
+                throw new Error('非法的封面 URL');
+            }
+            const coverResp = await axios.get(urlValidation.resolvedUrl, {
                 responseType: 'arraybuffer',
-                timeout: 5000 
+                timeout: 5000,
+                maxRedirects: 0,
+                httpsAgent: new https.Agent({ servername: urlValidation.servername }),
+                headers: {
+                    'Host': urlValidation.hostHeader
+                }
             });
             coverBase64 = `data:image/png;base64,${Buffer.from(coverResp.data).toString('base64')}`;
         } catch (e) {
