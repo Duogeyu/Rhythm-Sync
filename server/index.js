@@ -19,6 +19,63 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// SSRF 安全校验函数
+async function isValidExternalUrl(urlStr) {
+    try {
+        const dns = require('dns');
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return null;
+        }
+
+        const { address, family } = await dns.promises.lookup(parsed.hostname);
+
+        // Normalize IPv4-mapped IPv6
+        let checkIp = address;
+        if (checkIp.startsWith('::ffff:')) {
+            checkIp = checkIp.substring(7);
+        }
+
+        // Block 0.0.0.0
+        if (checkIp === '0.0.0.0' || checkIp === '::') {
+            return null;
+        }
+
+        // Block loopback
+        if (checkIp.startsWith('127.') || checkIp === '::1') {
+            return null;
+        }
+
+        // Block cloud metadata
+        if (checkIp.startsWith('169.254.')) {
+            return null;
+        }
+
+        // Block private IPv4
+        if (/^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)/.test(checkIp)) {
+            return null;
+        }
+
+        // Block IPv6 ULA (fc00::/7)
+        if (checkIp.toLowerCase().startsWith('fc') || checkIp.toLowerCase().startsWith('fd')) {
+            return null;
+        }
+
+        // Block IPv6 Link Local (fe80::/10)
+        if (checkIp.toLowerCase().startsWith('fe8') || checkIp.toLowerCase().startsWith('fe9') || checkIp.toLowerCase().startsWith('fea') || checkIp.toLowerCase().startsWith('feb')) {
+            return null;
+        }
+
+        return {
+            ip: address,
+            family: family,
+            parsed
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1664,15 +1721,32 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     }
     
     // 下载封面
+    const validUrlInfo = await isValidExternalUrl(originalUrl);
+    if (!validUrlInfo) {
+        console.warn(`[封面] 拦截到非法的封面URL (${gameId}): ${originalUrl.slice(0, 50)}...`);
+        return null;
+    }
+
+    // Rewrite URL to use IP to prevent DNS rebinding
+    const hostHeader = validUrlInfo.parsed.host;
+    const ipStr = validUrlInfo.family === 6 ? `[${validUrlInfo.ip}]` : validUrlInfo.ip;
+    const portStr = validUrlInfo.parsed.port ? `:${validUrlInfo.parsed.port}` : '';
+    const safeUrl = `${validUrlInfo.parsed.protocol}//${ipStr}${portStr}${validUrlInfo.parsed.pathname}${validUrlInfo.parsed.search}`;
+
+    const https = require('https');
+
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const response = await axios.get(safeUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                maxRedirects: 0,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': originalUrl
-                }
+                    'Referer': originalUrl,
+                    'Host': hostHeader
+                },
+                httpsAgent: new https.Agent({ servername: validUrlInfo.parsed.hostname })
             });
             
             fs.writeFileSync(localPath, response.data);
@@ -1771,19 +1845,35 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
         
+        const validUrlInfo = await isValidExternalUrl(originalUrl);
+        if (!validUrlInfo) {
+            return res.status(400).json({ error: '非法的封面URL' });
+        }
+
         // 确保目录存在
         const gameDir = path.join(COVERS_DIR, gameId);
         if (!fs.existsSync(gameDir)) {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
+        // Rewrite URL to use IP to prevent DNS rebinding
+        const hostHeader = validUrlInfo.parsed.host;
+        const ipStr = validUrlInfo.family === 6 ? `[${validUrlInfo.ip}]` : validUrlInfo.ip;
+        const portStr = validUrlInfo.parsed.port ? `:${validUrlInfo.parsed.port}` : '';
+        const safeUrl = `${validUrlInfo.parsed.protocol}//${ipStr}${portStr}${validUrlInfo.parsed.pathname}${validUrlInfo.parsed.search}`;
+
+        const https = require('https');
+
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(safeUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Host': hostHeader
+            },
+            httpsAgent: new https.Agent({ servername: validUrlInfo.parsed.hostname })
         });
         
         // 保存到本地
@@ -1798,8 +1888,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        res.status(500).json({ error: '封面下载失败' });
     }
 });
 
