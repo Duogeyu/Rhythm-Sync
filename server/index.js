@@ -8,6 +8,8 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const dns = require('dns');
+const https = require('https');
 const {
     user_playlist,
     playlist_detail,
@@ -233,6 +235,46 @@ function isSafeFilename(filename) {
         return false;
     }
     return true;
+}
+
+// 安全：校验外部 URL，防止 SSRF，返回解析后的 IP 地址
+async function isValidExternalUrl(urlStr) {
+    try {
+        const parsedUrl = new URL(urlStr);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return false;
+        }
+
+        const { address, family } = await dns.promises.lookup(parsedUrl.hostname);
+
+        let targetFamily = family;
+        let targetAddress = address;
+
+        // 规范化 IPv4-mapped IPv6 (例如 ::ffff:127.0.0.1)
+        if (family === 6 && address.startsWith('::ffff:')) {
+            targetFamily = 4;
+            targetAddress = address.replace(/^::ffff:/, '');
+        }
+
+        if (targetFamily === 4) {
+            if (targetAddress === '0.0.0.0' || targetAddress.startsWith('127.') || targetAddress.startsWith('10.') ||
+                targetAddress.startsWith('192.168.') || targetAddress.startsWith('169.254.')) {
+                return false;
+            }
+            const parts = targetAddress.split('.').map(Number);
+            if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) {
+                return false;
+            }
+        } else if (targetFamily === 6) {
+            if (targetAddress === '::1' || targetAddress === '0:0:0:0:0:0:0:1' || targetAddress.toLowerCase().startsWith('fc') || targetAddress.toLowerCase().startsWith('fd')) {
+                return false;
+            }
+        }
+
+        return address;
+    } catch (e) {
+        return false;
+    }
 }
 
 // 提取经常在路径中使用的参数名，并应用安全校验
@@ -1767,6 +1809,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    // 安全校验：防止 SSRF 和 TOCTOU DNS Rebinding
+    const safeIp = await isValidExternalUrl(originalUrl);
+    if (!safeIp) {
+        console.warn(`[安全] 拦截非法封面下载请求: ${originalUrl}`);
+        return res.status(400).json({ error: '非法的外部 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1777,13 +1826,20 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
+        // 构建防 TOCTOU 的请求 URL（使用解析后的 IP）
+        const parsedOriginal = new URL(originalUrl);
+        const requestUrl = `${parsedOriginal.protocol}//${safeIp.includes(':') ? `[${safeIp}]` : safeIp}${parsedOriginal.port ? `:${parsedOriginal.port}` : ''}${parsedOriginal.pathname}${parsedOriginal.search}`;
+
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(requestUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0, // 禁止重定向，防止重定向导致绕过 SSRF 检查
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Host': parsedOriginal.host // 保持原始 Host 以处理虚拟主机
+            },
+            httpsAgent: parsedOriginal.protocol === 'https:' ? new https.Agent({ servername: parsedOriginal.hostname }) : undefined // 保持 SNI
         });
         
         // 保存到本地
@@ -1798,8 +1854,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 下载失败时返回 404，不使用 res.redirect(originalUrl) 避免开放重定向/SSRF 漏洞
+        res.status(404).json({ error: '封面下载失败' });
     }
 });
 
