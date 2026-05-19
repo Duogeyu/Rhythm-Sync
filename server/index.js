@@ -3653,7 +3653,8 @@ app.get('/api/check', async (req, res) => {
         const matches = {};
         let foundInGames = 0;
         
-        for (const [gameId, config] of Object.entries(GAME_CONFIG)) {
+        // ⚡ Bolt: 使用 Promise.all 并行查询各个游戏的数据，缩短总耗时
+        const checkPromises = Object.entries(GAME_CONFIG).map(async ([gameId, config]) => {
             try {
                 const songs = await fetchGameSongs(gameId);
                 
@@ -3688,26 +3689,37 @@ app.get('/api/check', async (req, res) => {
                 }
                 
                 if (match) {
-                    matches[gameId] = {
-                        gameName: config.name,
-                        found: true,
-                        song: {
-                            id: match.id,
-                            title: match.title,
-                            artist: match.artist,
-                            category: match.category,
-                            coverUrl: match.coverUrl,
-                            charts: match.charts || [],
-                            levels: match.levels || []
-                        }
-                    };
-                    foundInGames++;
+                    return { gameId, config, match };
                 }
+                return null;
             } catch (e) {
                 console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
+                return null;
+            }
+        });
+
+        const checkResults = await Promise.all(checkPromises);
+
+        for (const result of checkResults) {
+            if (result) {
+                matches[result.gameId] = {
+                    gameName: result.config.name,
+                    found: true,
+                    song: {
+                        id: result.match.id,
+                        title: result.match.title,
+                        artist: result.match.artist,
+                        category: result.match.category,
+                        coverUrl: result.match.coverUrl,
+                        charts: result.match.charts || [],
+                        levels: result.match.levels || []
+                    }
+                };
             }
         }
         
+        foundInGames = Object.keys(matches).length;
+
         res.json({
             success: true,
             query: { title, artist },
