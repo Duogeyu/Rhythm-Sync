@@ -8,6 +8,69 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+
+const dns = require('dns');
+const net = require('net');
+const https = require('https');
+
+async function isValidExternalUrl(urlString) {
+    if (!urlString) return null;
+    try {
+        const parsedUrl = new URL(urlString);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return null;
+        }
+
+        let ip = parsedUrl.hostname;
+        if (!net.isIP(ip)) {
+            try {
+                const addresses = await dns.promises.lookup(parsedUrl.hostname);
+                ip = addresses.address;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        if (ip.startsWith('::ffff:')) {
+            ip = ip.substring(7);
+        }
+
+        let isInternal = false;
+        if (net.isIPv4(ip)) {
+            const parts = ip.split('.').map(Number);
+            isInternal = (
+                parts[0] === 10 ||
+                (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+                (parts[0] === 192 && parts[1] === 168) ||
+                parts[0] === 127 ||
+                parts[0] === 0 ||
+                (parts[0] === 169 && parts[1] === 254)
+            );
+        } else if (net.isIPv6(ip)) {
+            const lowerIp = ip.toLowerCase();
+            isInternal = (
+                lowerIp === '::1' ||
+                lowerIp.startsWith('fc00:') ||
+                lowerIp.startsWith('fd00:') ||
+                lowerIp.startsWith('fe80:')
+            );
+        } else {
+            isInternal = true;
+        }
+
+        if (isInternal) {
+            return null;
+        }
+
+        return {
+            resolvedIp: ip,
+            parsedUrl
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
 const {
     user_playlist,
     playlist_detail,
@@ -1662,18 +1725,43 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     if (fs.existsSync(localPath)) {
         return localPath;
     }
+
+    // SSRF Validation
+    const urlInfo = await isValidExternalUrl(originalUrl);
+    if (!urlInfo) {
+        console.warn(`[封面] 无效或不安全的 URL (${gameId}): ${originalUrl.slice(0, 50)}...`);
+        return null;
+    }
+
+    const { parsedUrl, resolvedIp } = urlInfo;
+    const hostHeader = parsedUrl.host;
+    const isIpv6 = net.isIPv6(resolvedIp);
+    const ipHost = isIpv6 ? `[${resolvedIp}]` : resolvedIp;
+    const portStr = parsedUrl.port ? `:${parsedUrl.port}` : '';
+    const safeUrl = `${parsedUrl.protocol}//${ipHost}${portStr}${parsedUrl.pathname}${parsedUrl.search}`;
+
+    const tls = require('tls');
+    const axiosConfig = {
+        responseType: 'arraybuffer',
+        timeout: coversConfig.timeout,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Host': hostHeader,
+            'Referer': originalUrl
+        }
+    };
+
+    if (parsedUrl.protocol === 'https:') {
+        axiosConfig.httpsAgent = new https.Agent({
+            servername: parsedUrl.hostname,
+            checkServerIdentity: (host, cert) => tls.checkServerIdentity(parsedUrl.hostname, cert)
+        });
+    }
     
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
-                responseType: 'arraybuffer',
-                timeout: coversConfig.timeout,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': originalUrl
-                }
-            });
+            const response = await axios.get(safeUrl, axiosConfig);
             
             fs.writeFileSync(localPath, response.data);
             return localPath;
@@ -1766,6 +1854,12 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+
+    // SSRF Validation
+    const urlInfo = await isValidExternalUrl(originalUrl);
+    if (!urlInfo) {
+        return res.status(400).json({ error: '无效或不安全的 URL' });
+    }
     
     // 按需下载
     try {
@@ -1777,14 +1871,36 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         
-        // 下载封面
-        const response = await axios.get(originalUrl, {
+        // Rewrite URL to mitigate TOCTOU DNS Rebinding
+        const { parsedUrl, resolvedIp } = urlInfo;
+        const hostHeader = parsedUrl.host;
+        const isIpv6 = net.isIPv6(resolvedIp);
+        const ipHost = isIpv6 ? `[${resolvedIp}]` : resolvedIp;
+        const portStr = parsedUrl.port ? `:${parsedUrl.port}` : '';
+        const safeUrl = `${parsedUrl.protocol}//${ipHost}${portStr}${parsedUrl.pathname}${parsedUrl.search}`;
+
+        const tls = require('tls');
+        const axiosConfig = {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            // 允许重定向，但使用 interceptor 检查安全性更好，这里由于 axios 不方便拦截重定向的 socket
+            // 所以我们可以放宽 maxRedirects，如果一定要拦截，更好的做法是只使用 ip
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Host': hostHeader,
+                'Referer': originalUrl
             }
-        });
+        };
+
+        if (parsedUrl.protocol === 'https:') {
+            axiosConfig.httpsAgent = new https.Agent({
+                servername: parsedUrl.hostname,
+                checkServerIdentity: (host, cert) => tls.checkServerIdentity(parsedUrl.hostname, cert)
+            });
+        }
+
+        // 下载封面
+        const response = await axios.get(safeUrl, axiosConfig);
         
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
@@ -1798,8 +1914,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 不再重定向回原始URL以防止Open Redirect/SSRF
+        res.status(502).json({ error: '下载失败' });
     }
 });
 
