@@ -19,6 +19,45 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+const dns = require('dns');
+const http = require('http');
+const https = require('https');
+
+function isInternalIp(ip) {
+    if (!ip) return false;
+    const cleanIp = ip.replace(/^::ffff:/, '').toLowerCase();
+    if (cleanIp === '0.0.0.0' || cleanIp === '::' || cleanIp.startsWith('127.') || cleanIp === '::1') return true;
+    if (cleanIp.startsWith('10.') || cleanIp.startsWith('192.168.') || cleanIp.startsWith('169.254.')) return true;
+    if (cleanIp.startsWith('172.')) {
+        const p = parseInt(cleanIp.split('.')[1]);
+        if (p >= 16 && p <= 31) return true;
+    }
+    if (cleanIp.startsWith('fc00:') || cleanIp.startsWith('fd00:') || cleanIp.startsWith('fe80:')) return true;
+    return false;
+}
+
+async function getSafeRequestConfig(urlString) {
+    try {
+        const urlObj = new URL(urlString);
+        if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') return false;
+
+        const { address, family } = await dns.promises.lookup(urlObj.hostname);
+        if (isInternalIp(address)) return false;
+
+        const lookup = (hostname, opts, cb) => {
+            cb(null, address, family);
+        };
+
+        return {
+            isValid: true,
+            httpAgent: new http.Agent({ lookup }),
+            httpsAgent: new https.Agent({ lookup })
+        };
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1663,12 +1702,21 @@ async function downloadAndCacheCover(gameId, originalUrl) {
         return localPath;
     }
     
+    // 安全验证原始 URL
+    const safeConfig = await getSafeRequestConfig(originalUrl);
+    if (!safeConfig) {
+        console.warn(`[封面] SSRF防御: 拒绝下载不安全的 URL (${gameId}): ${originalUrl.slice(0, 50)}...`);
+        return null;
+    }
+
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeConfig.httpAgent,
+                httpsAgent: safeConfig.httpsAgent,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1767,6 +1815,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    // 安全验证原始 URL
+    const safeConfig = await getSafeRequestConfig(originalUrl);
+    if (!safeConfig) {
+        console.warn(`[封面] SSRF防御: 拒绝下载不安全的 URL (${gameId}): ${originalUrl.slice(0, 50)}...`);
+        return res.status(400).json({ error: '无效的封面 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1781,6 +1836,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeConfig.httpAgent,
+            httpsAgent: safeConfig.httpsAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1798,8 +1855,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        res.status(502).json({ error: '图片下载失败' }); // 忽略... 修复开放重定向漏洞
     }
 });
 
@@ -3010,9 +3066,16 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     let coverBase64 = null;
     if (song.coverUrl) {
         try {
+            const safeConfig = await getSafeRequestConfig(song.coverUrl);
+            if (!safeConfig) {
+                throw new Error('不安全的封面 URL');
+            }
+
             const coverResp = await axios.get(song.coverUrl, { 
                 responseType: 'arraybuffer',
-                timeout: 5000 
+                timeout: 5000,
+                httpAgent: safeConfig.httpAgent,
+                httpsAgent: safeConfig.httpsAgent
             });
             coverBase64 = `data:image/png;base64,${Buffer.from(coverResp.data).toString('base64')}`;
         } catch (e) {
