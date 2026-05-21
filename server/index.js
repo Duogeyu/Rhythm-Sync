@@ -18,7 +18,57 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+const dns = require('dns');
+const http = require('http');
+const https = require('https');
+
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    ip = ip.toLowerCase();
+    if (ip.startsWith('::ffff:')) ip = ip.substring(7);
+
+    if (ip.startsWith('127.') || ip.startsWith('10.') || ip.startsWith('169.254.') || ip.startsWith('0.')) return true;
+    if (ip.startsWith('192.168.')) return true;
+    if (ip.startsWith('172.')) {
+        const second = parseInt(ip.split('.')[1], 10);
+        if (second >= 16 && second <= 31) return true;
+    }
+    if (ip === '::1' || ip === '::' || ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80')) return true;
+    return false;
+}
+
+async function getSafeRequestConfig(urlStr, config = {}) {
+    const parsedUrl = new URL(urlStr);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        throw new Error('Invalid protocol');
+    }
+
+    const agentOpts = {
+        lookup: (hostname, options, callback) => {
+            dns.lookup(hostname, options, (err, address, family) => {
+                if (err) return callback(err);
+
+                // If options.all is true, address is an array of objects
+                const addresses = Array.isArray(address) ? address : [{ address, family }];
+
+                for (const addr of addresses) {
+                    if (isInternalIp(addr.address)) {
+                        return callback(new Error(`Internal IP blocked: ${addr.address}`));
+                    }
+                }
+
+                callback(null, address, family);
+            });
+        }
+    };
+
+    return {
+        ...config,
+        httpAgent: new http.Agent(agentOpts),
+        httpsAgent: new https.Agent(agentOpts)
+    };
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1666,7 +1716,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const config = await getSafeRequestConfig(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
                 headers: {
@@ -1674,6 +1724,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                     'Referer': originalUrl
                 }
             });
+            const response = await axios.get(originalUrl, config);
             
             fs.writeFileSync(localPath, response.data);
             return localPath;
@@ -1778,13 +1829,14 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         }
         
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const config = await getSafeRequestConfig(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
+        const response = await axios.get(originalUrl, config);
         
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
@@ -1798,8 +1850,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 安全：如果发生错误，不要重定向回可能包含恶意或内网地址的 URL
+        res.status(500).json({ error: '封面下载失败' });
     }
 });
 
