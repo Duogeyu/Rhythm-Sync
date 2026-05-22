@@ -18,6 +18,88 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const { URL } = require('url');
+
+// SSRF 防护: 检查是否是内部 IP
+function isInternalIp(ip) {
+    let cleanIp = ip.replace(/^::ffff:/i, '');
+    if (cleanIp === '0.0.0.0' || cleanIp === '::') return true;
+
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(cleanIp)) {
+        const parts = cleanIp.split('.').map(Number);
+        if (parts[0] === 10) return true;
+        if (parts[0] === 127) return true;
+        if (parts[0] === 169 && parts[1] === 254) return true;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        if (parts[0] === 192 && parts[1] === 168) return true;
+    }
+
+    if (cleanIp.includes(':')) {
+        const lowerIp = cleanIp.toLowerCase();
+        if (lowerIp === '::1') return true;
+        if (lowerIp.startsWith('fc') || lowerIp.startsWith('fd')) return true;
+        if (lowerIp.startsWith('fe8') || lowerIp.startsWith('fe9') || lowerIp.startsWith('fea') || lowerIp.startsWith('feb')) return true;
+    }
+
+    return false;
+}
+
+const safeLookup = (hostname, options, callback) => {
+    let opts = typeof options === 'object' ? options : { family: options };
+    dns.lookup(hostname, { all: true, ...opts }, (err, addresses) => {
+        if (err) return callback(err, null, null);
+        if (!addresses || addresses.length === 0) {
+            return callback(new Error(`DNS lookup failed for ${hostname}`), null, null);
+        }
+
+        for (const addr of addresses) {
+            if (isInternalIp(addr.address)) {
+                return callback(new Error(`SSRF Prevention: DNS resolved to internal IP ${addr.address}`), null, null);
+            }
+        }
+
+        if (opts.all) {
+            callback(null, addresses);
+        } else {
+            callback(null, addresses[0].address, addresses[0].family);
+        }
+    });
+};
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup });
+
+function getSafeRequestConfig(originalUrl, extraConfig = {}) {
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(originalUrl);
+    } catch(e) {
+        throw new Error('SSRF Prevention: Invalid URL');
+    }
+
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        throw new Error('SSRF Prevention: Invalid protocol');
+    }
+
+    if (/^[\d\.]+$/.test(parsedUrl.hostname) || (parsedUrl.hostname.startsWith('[') && parsedUrl.hostname.endsWith(']'))) {
+        let ip = parsedUrl.hostname.replace(/[\[\]]/g, '');
+        if (isInternalIp(ip)) {
+            throw new Error(`SSRF Prevention: Direct connection to internal IP ${ip} blocked`);
+        }
+    }
+
+    return {
+        ...extraConfig,
+        httpAgent: safeHttpAgent,
+        httpsAgent: safeHttpsAgent,
+        maxRedirects: 0 // SSRF 防护: 禁用自动重定向，防止通过 302 重定向到内部 IP
+    };
+}
+
 // ============== 安全过滤函数 ==============
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
@@ -1666,14 +1748,14 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const response = await axios.get(originalUrl, getSafeRequestConfig(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
                 }
-            });
+            }));
             
             fs.writeFileSync(localPath, response.data);
             return localPath;
@@ -1778,13 +1860,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         }
         
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(originalUrl, getSafeRequestConfig(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-        });
+        }));
         
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
@@ -1798,8 +1880,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 忽略重定向，防止 SSRF/Open Redirect 绕过
+        res.status(400).json({ error: '封面下载失败' });
     }
 });
 
