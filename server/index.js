@@ -4642,7 +4642,6 @@ app.get('/api/admin/recent-logs', async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const withLocation = req.query.location !== 'false'; // 默认查询归属地
         
-        const logs = [];
         let allFiles = [];
         
         if (fs.existsSync(LOG_DIR)) {
@@ -4655,20 +4654,26 @@ app.get('/api/admin/recent-logs', async (req, res) => {
         const startIdx = (page - 1) * limit;
         const files = allFiles.slice(startIdx, startIdx + limit);
         
-        for (const file of files) {
-            try {
-                const data = JSON.parse(fs.readFileSync(path.join(LOG_DIR, file), 'utf8'));
-                
-                // 查询 IP 归属地
-                if (withLocation && data.clientIp) {
-                    data.location = await getIpLocation(data.clientIp);
+        // ⚡ Bolt: Parallelize log file reading and IP location lookups
+        const processedLogs = await Promise.all(
+            files.map(async file => {
+                try {
+                    const data = JSON.parse(await fs.promises.readFile(path.join(LOG_DIR, file), 'utf8'));
+
+                    // 查询 IP 归属地
+                    if (withLocation && data.clientIp) {
+                        data.location = await getIpLocation(data.clientIp);
+                    }
+
+                    return data;
+                } catch (e) {
+                    // 跳过无法解析的文件
+                    return null;
                 }
-                
-                logs.push(data);
-            } catch (e) {
-                // 跳过无法解析的文件
-            }
-        }
+            })
+        );
+
+        const logs = processedLogs.filter(log => log !== null);
         
         res.json({ 
             success: true, 
@@ -4770,16 +4775,18 @@ app.get('/api/admin/stats', async (req, res) => {
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10);
         
-        const topIpsWithLocation = [];
-        for (const [ip, count] of topIpsList) {
-            const location = await getIpLocation(ip);
-            topIpsWithLocation.push({
-                ip,
-                count,
-                location: `${location.country} ${location.region} ${location.city}`.trim(),
-                isp: location.isp
-            });
-        }
+        // ⚡ Bolt: Parallelize IP location lookups to reduce API latency
+        const topIpsWithLocation = await Promise.all(
+            topIpsList.map(async ([ip, count]) => {
+                const location = await getIpLocation(ip);
+                return {
+                    ip,
+                    count,
+                    location: `${location.country} ${location.region} ${location.city}`.trim(),
+                    isp: location.isp
+                };
+            })
+        );
         
         res.json({
             success: true,
