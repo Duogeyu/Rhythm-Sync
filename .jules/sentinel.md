@@ -2,3 +2,7 @@
 **Vulnerability:** Multiple API endpoints (`/api/covers/:gameId/:fileName`, `/api/bot/result/:id`, `/api/random/image/:id`, etc.) use user input directly in `path.join` without path traversal validation.
 **Learning:** `req.params` parameters must be validated to prevent directory traversal (`..`, `/`, `\`) before being used in file system operations.
 **Prevention:** Implement a global `isSafeFilename` middleware using `app.param()` to automatically reject any unsafe paths across all endpoints.
+## 2024-05-23 - SSRF and Open Redirect in Image Proxy
+**Vulnerability:** The `/api/covers/:gameId/:fileName` endpoint and background fetching routine `downloadAndCacheCover` took a user-supplied URL (`req.query.url`) and passed it directly to `axios.get()` without validation. Furthermore, on failure, it performed an unsafe redirect `res.redirect(originalUrl)`.
+**Learning:** Naive image proxy endpoints are prime vectors for Server-Side Request Forgery (SSRF) to scan internal networks, reach cloud metadata endpoints (e.g., AWS 169.254.169.254), or interact with local services. Returning an Open Redirect on failure allows attackers to pivot and abuse trust.
+**Prevention:** 1. Ensure `originalUrl` uses safe protocols (`http/https`). 2. Implement an `httpAgent/httpsAgent` lookup override in `axios` to intercept DNS resolutions and block IP addresses that belong to local, private, or reserved ranges *after* resolution, defeating DNS rebinding (TOCTOU). 3. Fail securely by returning 500 errors instead of redirecting the user back to the malicious payload.
