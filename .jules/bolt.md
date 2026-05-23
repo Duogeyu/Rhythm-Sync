@@ -1,3 +1,7 @@
 ## 2023-10-27 - [Optimize Levenshtein Distance Calculation]
 **Learning:** In the Node.js backend, synchronous string matching algorithms like `levenshteinDistance` run single-threaded and block the event loop. The original implementation used a 2D matrix (`const matrix = []`), resulting in $O(N \times M)$ memory allocations and massive Garbage Collection (GC) overhead during bulk matching tasks.
 **Action:** Always optimize dynamic programming matrix calculations in high-frequency Node.js loops by using an $O(N)$ 1D array approach combined with a globally shared `Uint16Array` buffer for standard lengths. Include a dynamic allocation fallback for inputs that exceed the buffer's maximum length.
+
+## 2024-05-23 - [Optimize Regex Compilation and String Operations in Loops]
+**Learning:** In Node.js, `String.prototype.replace(/.../g, '')` combined with inline definitions compiles the regular expression on every execution. In hot loops processing large datasets (like `normalizeTitle` and `normalizeArtist`), this results in heavy GC overhead and CPU utilization. Furthermore, `.substring()` operations in tight loops (like Jaccard bigram extraction) allocate numerous intermediate strings, exacerbating GC pressure.
+**Action:** Always pre-compile regexes at the module scope using constants (e.g., `REGEX_SPACES`) and hoist iterative functions out of request handlers. To eliminate object allocation overhead for fixed-length segmentations (like Bigrams), replace string slicing with bitwise packing (e.g., `(charCodeAt(i) << 16) | charCodeAt(i + 1)`).
