@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const fuzzysort = require('fuzzysort');
+const { normalizeTitle, normalizeArtist } = require('./utils');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
@@ -2134,7 +2135,10 @@ function stringSimilarity(a, b) {
     // Jaccard on bigrams
     const bigrams = (s) => {
         const set = new Set();
-        for (let i = 0; i < s.length - 1; i++) set.add(s.substring(i, i + 2));
+        // Use bitwise packing to avoid string allocation and reduce GC overhead
+        for (let i = 0; i < s.length - 1; i++) {
+            set.add((s.charCodeAt(i) << 16) | s.charCodeAt(i + 1));
+        }
         return set;
     };
     const setA = bigrams(a);
@@ -2485,16 +2489,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         sendEvent('init', { totalUserSongs: userSongs.length, gameStats });
 
         // 2. 准备匹配索引
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
 
         // Levenshtein 编辑距离 (优化版：O(n) 空间，减少 GC)
         const levenshteinDistance = (s1, s2) => {
@@ -2584,15 +2578,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         let batchResults = [];
 
         // 辅助函数：计算艺术家相似度
-        const normalizeArtist = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[,，、&＆×x]/g, '') // 去除分隔符
-                .replace(/feat\.?/gi, '')
-                .replace(/cv[.:]?/gi, '')
-                .replace(/[(（][^)）]*[)）]/g, ''); // 去除括号内容
-        };
 
         const artistMatch = (userArtist, gameArtist) => {
             const ua = normalizeArtist(userArtist);
@@ -2852,18 +2837,6 @@ app.post('/api/match-all', async (req, res) => {
         });
 
         const gameDataResults = await Promise.all(gameDataPromises);
-
-        // 辅助函数：标准化标题用于精确匹配
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '') // 去除空格
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
 
         // 对每个游戏进行匹配（并行处理）
         const matchPromises = gameDataResults.map(async ({ gameId, songs, error }) => {
@@ -3636,17 +3609,6 @@ app.get('/api/check', async (req, res) => {
             return res.status(400).json({ success: false, error: '缺少歌曲标题 (title 参数)' });
         }
         
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
-        
         const normalizedTitle = normalizeTitle(title);
         const normalizedArtist = artist ? normalizeTitle(artist) : null;
         
@@ -4025,18 +3987,6 @@ app.post('/api/bot/query', async (req, res) => {
         // 3. 进行匹配
         const gameIds = Object.keys(GAME_CONFIG);
         const results = {};
-        
-        // 准备匹配函数
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
         
         // 并行获取所有游戏数据并匹配
         await Promise.all(gameIds.map(async (gameId) => {
