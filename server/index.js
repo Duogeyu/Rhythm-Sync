@@ -3653,7 +3653,8 @@ app.get('/api/check', async (req, res) => {
         const matches = {};
         let foundInGames = 0;
         
-        for (const [gameId, config] of Object.entries(GAME_CONFIG)) {
+        // ⚡ Bolt: Use Promise.all to parallelize game data fetching
+        await Promise.all(Object.entries(GAME_CONFIG).map(async ([gameId, config]) => {
             try {
                 const songs = await fetchGameSongs(gameId);
                 
@@ -3701,12 +3702,13 @@ app.get('/api/check', async (req, res) => {
                             levels: match.levels || []
                         }
                     };
-                    foundInGames++;
                 }
             } catch (e) {
                 console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
             }
-        }
+        }));
+
+        foundInGames = Object.keys(matches).length;
         
         res.json({
             success: true,
@@ -4655,20 +4657,25 @@ app.get('/api/admin/recent-logs', async (req, res) => {
         const startIdx = (page - 1) * limit;
         const files = allFiles.slice(startIdx, startIdx + limit);
         
-        for (const file of files) {
+        // ⚡ Bolt: Use Promise.all and fs.promises to parallelize I/O and lookups
+        const results = await Promise.all(files.map(async (file) => {
             try {
-                const data = JSON.parse(fs.readFileSync(path.join(LOG_DIR, file), 'utf8'));
+                const rawData = await fs.promises.readFile(path.join(LOG_DIR, file), 'utf8');
+                const data = JSON.parse(rawData);
                 
                 // 查询 IP 归属地
                 if (withLocation && data.clientIp) {
                     data.location = await getIpLocation(data.clientIp);
                 }
                 
-                logs.push(data);
+                return data;
             } catch (e) {
                 // 跳过无法解析的文件
+                return null;
             }
-        }
+        }));
+
+        logs.push(...results.filter(item => item !== null));
         
         res.json({ 
             success: true, 
@@ -4770,16 +4777,22 @@ app.get('/api/admin/stats', async (req, res) => {
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10);
         
-        const topIpsWithLocation = [];
-        for (const [ip, count] of topIpsList) {
-            const location = await getIpLocation(ip);
-            topIpsWithLocation.push({
-                ip,
-                count,
-                location: `${location.country} ${location.region} ${location.city}`.trim(),
-                isp: location.isp
-            });
-        }
+        // ⚡ Bolt: Parallelize IP location lookups
+        const locationResults = await Promise.all(topIpsList.map(async ([ip, count]) => {
+            try {
+                const location = await getIpLocation(ip);
+                return {
+                    ip,
+                    count,
+                    location: `${location.country} ${location.region} ${location.city}`.trim(),
+                    isp: location.isp
+                };
+            } catch (e) {
+                return null;
+            }
+        }));
+
+        const topIpsWithLocation = locationResults.filter(item => item !== null);
         
         res.json({
             success: true,
