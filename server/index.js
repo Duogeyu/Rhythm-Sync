@@ -8,6 +8,58 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+
+// ============== SSRF 防护 ==============
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, address, fam) => {
+        if (err) return callback(err);
+
+        const checkIp = (ip) => {
+            ip = ip.replace(/^::ffff:/, '');
+            if (ip === '0.0.0.0' || ip.startsWith('127.') || ip.startsWith('169.254.') ||
+                ip.startsWith('10.') || /^172.(1[6-9]|2[0-9]|3[0-1])./.test(ip) || ip.startsWith('192.168.') ||
+                ip === '::1' || /^f[cd][0-9a-f]{2}:/i.test(ip)) {
+                return true; // forbidden
+            }
+            return false;
+        };
+
+        if (Array.isArray(address)) {
+            for (let a of address) {
+                let ip = typeof a === 'object' ? a.address : a;
+                if (checkIp(ip)) {
+                    return callback(new Error('Forbidden IP: ' + ip));
+                }
+            }
+        } else {
+            let ip = typeof address === 'string' ? address : (address.address || address);
+            if (checkIp(ip)) {
+                return callback(new Error('Forbidden IP: ' + ip));
+            }
+        }
+
+        callback(null, address, fam);
+    });
+};
+
+const sharedHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const sharedHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+const getSafeRequestConfig = (config = {}) => ({
+    ...config,
+    httpAgent: sharedHttpAgent,
+    httpsAgent: sharedHttpsAgent
+});
+
 const {
     user_playlist,
     playlist_detail,
@@ -1666,14 +1718,14 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const response = await axios.get(originalUrl, getSafeRequestConfig({
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
                 }
-            });
+            }));
             
             fs.writeFileSync(localPath, response.data);
             return localPath;
@@ -1778,13 +1830,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         }
         
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const response = await axios.get(originalUrl, getSafeRequestConfig({
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-        });
+        }));
         
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
@@ -1798,8 +1850,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 下载失败时返回错误，避免重定向引发 SSRF 绕过
+        res.status(500).json({ error: '封面下载失败' });
     }
 });
 
