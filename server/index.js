@@ -5,6 +5,9 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
+const http = require('http');
+const https = require('https');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -19,6 +22,54 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    let cleanIp = ip;
+    if (cleanIp.startsWith('::ffff:')) {
+        cleanIp = cleanIp.substring(7);
+    }
+    if (cleanIp === '0.0.0.0' || cleanIp.startsWith('127.') || cleanIp.startsWith('169.254.') || cleanIp.startsWith('10.') || cleanIp.startsWith('192.168.')) {
+        return true;
+    }
+    if (cleanIp === '::1' || cleanIp.toLowerCase().startsWith('fc00:') || cleanIp.toLowerCase().startsWith('fd00:')) {
+        return true;
+    }
+    if (cleanIp.startsWith('172.')) {
+        const parts = cleanIp.split('.');
+        const second = parseInt(parts[1], 10);
+        if (second >= 16 && second <= 31) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+        let ipToCheck = Array.isArray(address) ? address[0].address : address;
+        if (isInternalIp(ipToCheck)) {
+            return callback(new Error(`SSRF blocked: Hostname ${hostname} resolves to internal IP ${ipToCheck}`));
+        }
+        callback(null, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function getSafeRequestConfig(userConfig = {}) {
+    return {
+        ...userConfig,
+        httpAgent: safeHttpAgent,
+        httpsAgent: safeHttpsAgent,
+        maxRedirects: 0
+    };
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1666,7 +1717,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
-            const response = await axios.get(originalUrl, {
+            const config = getSafeRequestConfig({
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
                 headers: {
@@ -1674,6 +1725,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                     'Referer': originalUrl
                 }
             });
+            const response = await axios.get(originalUrl, config);
             
             fs.writeFileSync(localPath, response.data);
             return localPath;
@@ -1778,13 +1830,14 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         }
         
         // 下载封面
-        const response = await axios.get(originalUrl, {
+        const config = getSafeRequestConfig({
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
+        const response = await axios.get(originalUrl, config);
         
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
@@ -1798,8 +1851,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 忽略原始 URL 的重定向以防止 SSRF/Open Redirect 攻击
+        res.status(502).json({ error: '封面下载失败' });
     }
 });
 
