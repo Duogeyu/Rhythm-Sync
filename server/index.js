@@ -235,6 +235,26 @@ function isSafeFilename(filename) {
     return true;
 }
 
+// 安全：校验 URL 以防止 SSRF 攻击
+function isSafeUrl(urlString) {
+    if (!urlString || typeof urlString !== 'string') return false;
+    try {
+        const url = new URL(urlString);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+
+        // Basic hostname check to prevent common internal IPs
+        const host = url.hostname;
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0') return false;
+        if (host.startsWith('192.168.') || host.startsWith('10.') || host.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) return false;
+        if (host === '169.254.169.254' || host.startsWith('169.254.')) return false;
+        if (host.startsWith('fc00:') || host.startsWith('fd00:')) return false;
+
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 // 提取经常在路径中使用的参数名，并应用安全校验
 const pathParams = ['id', 'fileName', 'gameId', 'shareId', 'sessionId', 'shortId', 'uid', 'songId'];
 app.param(pathParams, (req, res, next, val, name) => {
@@ -1649,6 +1669,10 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝后台下载不安全的封面 URL: ${originalUrl}`);
+        return null;
+    }
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1767,6 +1791,12 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    // SSRF 安全校验
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拦截到不安全的封面下载请求: ${originalUrl}`);
+        return res.status(400).json({ error: '无效的封面 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1798,8 +1828,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        return res.status(400).json({ error: '封面下载失败' });
     }
 });
 
