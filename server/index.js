@@ -2131,10 +2131,10 @@ function stringSimilarity(a, b) {
     if (a === b) return 1;
     // 包含关系
     if (a.includes(b) || b.includes(a)) return 0.8;
-    // Jaccard on bigrams
+    // Jaccard on bigrams (optimized with bitwise char code packing to avoid GC overhead)
     const bigrams = (s) => {
         const set = new Set();
-        for (let i = 0; i < s.length - 1; i++) set.add(s.substring(i, i + 2));
+        for (let i = 0; i < s.length - 1; i++) set.add((s.charCodeAt(i) << 16) | s.charCodeAt(i + 1));
         return set;
     };
     const setA = bigrams(a);
