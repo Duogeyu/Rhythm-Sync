@@ -6,6 +6,59 @@ const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+
+// ============== 安全防护 ==============
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+
+const validateIp = (ip) => {
+    if (!ip) return false;
+    // 阻止 IPv4 映射的 IPv6 前缀绕过
+    const cleanIp = ip.replace(/^::ffff:/, '');
+    if (cleanIp === '0.0.0.0' ||
+        cleanIp === '127.0.0.1' ||
+        cleanIp === '::1' ||
+        cleanIp.startsWith('127.') ||
+        cleanIp.startsWith('10.') ||
+        cleanIp.startsWith('192.168.') ||
+        cleanIp.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
+        cleanIp.startsWith('169.254.') ||
+        cleanIp.startsWith('fc00:') ||
+        cleanIp.startsWith('fd00:')) {
+        return false;
+    }
+    return true;
+};
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+        if (!validateIp(address)) {
+            return callback(new Error(`SSRF Validation Failed: Resolved IP ${address} is not allowed`));
+        }
+        callback(null, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlStr) {
+    if (!urlStr) return false;
+    try {
+        const parsed = new URL(urlStr);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (e) {
+        return false;
+    }
+}
+// ======================================
+
 const sharp = require('sharp');
 const QRCode = require('qrcode');
 const {
@@ -1648,7 +1701,7 @@ function isCoverCached(gameId, originalUrl) {
 
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
-    if (!originalUrl || !coversConfig.enabled) return null;
+    if (!originalUrl || !isSafeUrl(originalUrl) || !coversConfig.enabled) return null;
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1658,7 +1711,7 @@ async function downloadAndCacheCover(gameId, originalUrl) {
         fs.mkdirSync(gameDir, { recursive: true });
     }
     
-    // 如果已缓存，直接返回
+    // 如果文件已存在，直接返回（虽然不太可能走到这，因为有 isCoverCached 判断）
     if (fs.existsSync(localPath)) {
         return localPath;
     }
@@ -1669,6 +1722,9 @@ async function downloadAndCacheCover(gameId, originalUrl) {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
+                maxRedirects: 0,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1763,8 +1819,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     
     // 从查询参数获取原始 URL
     const originalUrl = req.query.url;
-    if (!originalUrl) {
-        return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
+    if (!originalUrl || !isSafeUrl(originalUrl)) {
+        return res.status(404).json({ error: '封面未找到，且未提供有效的原始 URL' });
     }
     
     // 按需下载
@@ -1781,6 +1837,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
+            maxRedirects: 0,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1798,8 +1857,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 忽略重定向以防止开放重定向和SSRF绕过
+        res.status(500).end();
     }
 });
 
