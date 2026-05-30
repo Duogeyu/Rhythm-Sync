@@ -2,3 +2,7 @@
 **Vulnerability:** Multiple API endpoints (`/api/covers/:gameId/:fileName`, `/api/bot/result/:id`, `/api/random/image/:id`, etc.) use user input directly in `path.join` without path traversal validation.
 **Learning:** `req.params` parameters must be validated to prevent directory traversal (`..`, `/`, `\`) before being used in file system operations.
 **Prevention:** Implement a global `isSafeFilename` middleware using `app.param()` to automatically reject any unsafe paths across all endpoints.
+## 2026-05-30 - SSRF Prevention via DNS Rebinding Mitigation
+**Vulnerability:** The `/api/covers/:gameId/:fileName` endpoint fetched user-provided URLs via `axios.get()` without proper IP validation, making it vulnerable to Server-Side Request Forgery (SSRF) and DNS Rebinding. Additionally, the fallback error handler redirected clients to the unvalidated URL (`res.redirect(originalUrl)`), causing an Open Redirect.
+**Learning:** Checking the URL string before `axios.get()` is insufficient because the resolved IP can change during the request (TOCTOU) or be a local IP. Redirecting to user-provided input on failure exposes the application to Open Redirect attacks.
+**Prevention:** Always implement a custom `safeLookup` function injected into Node.js `http.Agent` and `https.Agent` to validate the resolved IP addresses against a denylist before making the request. Set `maxRedirects: 0` to prevent bypass via malicious redirects. Remove any `res.redirect()` calls to unvalidated inputs in error handlers, instead returning a safe status code (e.g., 500 or 404).
