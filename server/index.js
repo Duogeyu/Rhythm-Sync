@@ -8,6 +8,69 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const dns = require('dns');
+const http = require('http');
+const https = require('https');
+const net = require('net');
+
+function isInternalIp(ip) {
+    let cleanIp = ip;
+    if (cleanIp.startsWith('[')) cleanIp = cleanIp.substring(1, cleanIp.length - 1);
+    if (cleanIp.startsWith('::ffff:')) cleanIp = cleanIp.substring(7);
+    if (cleanIp === '0.0.0.0') return true;
+    if (cleanIp.startsWith('127.')) return true;
+    if (cleanIp.startsWith('169.254.')) return true;
+    if (cleanIp.startsWith('10.')) return true;
+    if (cleanIp.startsWith('172.')) {
+        const parts = cleanIp.split('.');
+        const second = parseInt(parts[1], 10);
+        if (second >= 16 && second <= 31) return true;
+    }
+    if (cleanIp.startsWith('192.168.')) return true;
+    if (cleanIp === '::1') return true;
+    if (cleanIp.toLowerCase().startsWith('fc00:')) return true;
+    if (cleanIp.toLowerCase().startsWith('fd00:')) return true;
+    return false;
+}
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+        const addresses = Array.isArray(address) ? address : [{address, family}];
+        for (const addr of addresses) {
+            const ip = addr.address || addr;
+            if (isInternalIp(ip)) {
+                return callback(new Error(`[SSRF] 拒绝访问内部 IP: ${ip}`));
+            }
+        }
+        callback(err, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ keepAlive: true, lookup: safeLookup });
+const safeHttpsAgent = new https.Agent({ keepAlive: true, lookup: safeLookup });
+
+function isSafeUrl(urlStr) {
+    if (!urlStr) return false;
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+        if (parsed.hostname === 'localhost') return false;
+        let hostname = parsed.hostname;
+        if (hostname.startsWith('[')) hostname = hostname.substring(1, hostname.length - 1);
+        if (net.isIP(hostname) && isInternalIp(hostname)) return false;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 const {
     user_playlist,
     playlist_detail,
@@ -1649,6 +1712,7 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    if (!isSafeUrl(originalUrl)) return null;
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1669,6 +1733,8 @@ async function downloadAndCacheCover(gameId, originalUrl) {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1766,6 +1832,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(400).json({ error: '非法的 URL 请求' });
+    }
     
     // 按需下载
     try {
@@ -1781,6 +1850,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1798,8 +1869,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 忽略... 下载失败时返回 400，避免 Open Redirect 漏洞
+        res.status(400).json({ error: '封面下载失败' });
     }
 });
 
