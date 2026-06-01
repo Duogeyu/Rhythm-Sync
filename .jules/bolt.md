@@ -1,3 +1,6 @@
 ## 2023-10-27 - [Optimize Levenshtein Distance Calculation]
 **Learning:** In the Node.js backend, synchronous string matching algorithms like `levenshteinDistance` run single-threaded and block the event loop. The original implementation used a 2D matrix (`const matrix = []`), resulting in $O(N \times M)$ memory allocations and massive Garbage Collection (GC) overhead during bulk matching tasks.
 **Action:** Always optimize dynamic programming matrix calculations in high-frequency Node.js loops by using an $O(N)$ 1D array approach combined with a globally shared `Uint16Array` buffer for standard lengths. Include a dynamic allocation fallback for inputs that exceed the buffer's maximum length.
+## 2024-06-01 - [Optimize String Normalization Functions]
+**Learning:** In a long-running Node.js process, inline definitions of regular expressions within functions (especially those called repeatedly inside hot loops or endpoint handlers) result in repetitive compilation of those regexes, causing unnecessary GC pressure and CPU cycles overhead.
+**Action:** Always extract static regular expressions and commonly used helper functions (like `normalizeTitle` and `normalizeArtist`) to the top-level module scope to compile them exactly once, significantly reducing memory churn during bulk matching operations.
