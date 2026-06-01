@@ -34,7 +34,6 @@ const isPrivateIP = (ip) => {
         ip.startsWith('192.168.') ||
         ip.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
         ip === '::1' ||
-        ip === '::' ||
         ip.startsWith('fc00:') ||
         ip.startsWith('fd00:') ||
         ip.startsWith('fe80:')
@@ -59,11 +58,11 @@ const safeHttpsAgent = new https.Agent({ keepAlive: true, lookup: safeLookup });
 // ============== 安全过滤函数 ==============
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
-    
+
     // 限制输入长度（防止 DoS）
     const maxLength = 10000;
     let sanitized = input.slice(0, maxLength);
-    
+
     // 移除危险字符和潜在的脚本注入
     sanitized = sanitized
         .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '') // 移除 script 标签
@@ -73,7 +72,7 @@ function sanitizeInput(input) {
         .replace(/data:/gi, '') // 移除 data: 协议
         .replace(/vbscript:/gi, '') // 移除 vbscript: 协议
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''); // 移除控制字符
-    
+
     return sanitized.trim();
 }
 
@@ -175,7 +174,7 @@ function parseInput(input) {
             icon: 'text'
         };
     }
-    
+
     // 2. 纯数字 - 默认网易云用户ID
     if (/^\d{5,15}$/.test(sanitized)) {
         return {
@@ -186,11 +185,11 @@ function parseInput(input) {
             icon: 'netease'
         };
     }
-    
+
     // 3. 尝试从混合文本中提取 URL
     const extractedUrl = extractUrlFromText(sanitized);
     const textToMatch = extractedUrl || sanitized;
-    
+
     // 4. 检测各平台链接
     for (const [platformKey, platform] of Object.entries(PLATFORM_PATTERNS)) {
         for (const pattern of platform.patterns) {
@@ -210,7 +209,7 @@ function parseInput(input) {
             }
         }
     }
-    
+
     // 5. 多行文本 - 当作歌曲列表（过滤掉看起来像 URL 或恶意内容的行）
     if (sanitized.includes('\n') || sanitized.split(/[,，;；]/).length > 2) {
         const lines = sanitized
@@ -226,7 +225,7 @@ function parseInput(input) {
                 if (/[{}<>$`\\]/.test(l)) return false;
                 return true;
             });
-        
+
         if (lines.length > 0) {
             return {
                 platform: 'text',
@@ -237,7 +236,7 @@ function parseInput(input) {
             };
         }
     }
-    
+
     // 6. 单行文本 - 可能是单首歌（额外安全检查）
     const singleQuery = sanitized.replace(/[@#$%^&*{}[\]\\|<>]/g, '').trim();
     if (singleQuery.length < 2 || singleQuery.length > 200) {
@@ -249,7 +248,7 @@ function parseInput(input) {
             icon: 'text'
         };
     }
-    
+
     return {
         platform: 'text',
         type: 'single',
@@ -346,20 +345,20 @@ async function getIpLocation(ip) {
     if (!ip || ip === 'unknown' || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) {
         return { country: '本地', region: '', city: '本地网络', isp: '-' };
     }
-    
+
     // 移除 IPv6 前缀
     const cleanIp = ip.replace(/^::ffff:/, '');
-    
+
     // 检查缓存
     if (ipLocationCache.has(cleanIp)) {
         return ipLocationCache.get(cleanIp);
     }
-    
+
     try {
         const response = await axios.get(`http://ip-api.com/json/${cleanIp}?lang=zh-CN&fields=status,country,regionName,city,isp`, {
             timeout: 3000
         });
-        
+
         if (response.data.status === 'success') {
             const location = {
                 country: response.data.country || '未知',
@@ -378,7 +377,7 @@ async function getIpLocation(ip) {
     } catch (e) {
         console.log(`[IP] 归属地查询失败: ${cleanIp} - ${e.message}`);
     }
-    
+
     return { country: '未知', region: '', city: '', isp: '' };
 }
 
@@ -656,7 +655,7 @@ function loadActiveConfig() {
     try {
         // 首先使用默认值初始化所有游戏
         activeSelections = { ...DEFAULT_SELECTIONS };
-        
+
         // 然后加载保存的配置，覆盖默认值
         if (fs.existsSync(CONFIG_FILE)) {
             const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
@@ -669,7 +668,7 @@ function loadActiveConfig() {
                 }
             }
         }
-        
+
         GAME_CONFIG = buildGameConfig();
         console.log('[配置] 已加载自定义数据源配置');
         for (const [gameId, sourceId] of Object.entries(activeSelections)) {
@@ -706,12 +705,12 @@ function switchGameSource(gameId, sourceId) {
     if (!DATA_SOURCES[gameId]?.[sourceId]) {
         return { success: false, error: `游戏 ${gameId} 不支持数据源: ${sourceId}` };
     }
-    
+
     const oldSourceId = activeSelections[gameId];
     activeSelections[gameId] = sourceId;
     GAME_CONFIG = buildGameConfig();
     saveActiveConfig();
-    
+
     return {
         success: true,
         gameId,
@@ -769,18 +768,18 @@ function normalizeSongs(data, type, gameId) {
             // 1. 标准谱面 (SD): lev_bas, lev_adv, lev_exp, lev_mas, lev_remas
             // 2. DX 谱面: dx_lev_bas, dx_lev_adv, dx_lev_exp, dx_lev_mas, dx_lev_remas
             // 需要同时处理两种格式，优先使用 DX 谱面数据
-            
+
             const hasDxChart = s.dx_lev_bas || s.dx_lev_adv || s.dx_lev_exp || s.dx_lev_mas || s.dx_lev_remas;
             const hasStdChart = s.lev_bas || s.lev_adv || s.lev_exp || s.lev_mas || s.lev_remas;
-            
+
             // 判断谱面类型：有 DX 谱面的标记为 DX，否则为 SD
             const chartType = hasDxChart ? 'DX' : 'SD';
-            
+
             // 构建难度数据 - 优先使用 DX 谱面，回退到标准谱面
             const charts = [];
             const levels = [];
             const ds = [];
-            
+
             // DX 谱面数据
             if (hasDxChart) {
                 if (s.dx_lev_bas) {
@@ -809,7 +808,7 @@ function normalizeSongs(data, type, gameId) {
                     ds.push(parseFloat(s.dx_lev_remas_i) || 0);
                 }
             }
-            
+
             // 标准谱面数据 (SD) - 仅在没有 DX 谱面时使用
             if (!hasDxChart && hasStdChart) {
                 if (s.lev_bas) {
@@ -838,7 +837,7 @@ function normalizeSongs(data, type, gameId) {
                     ds.push(parseFloat(s.lev_remas_i) || 0);
                 }
             }
-            
+
             // 封面 URL: otoge-db 使用 image_url 字段，但只有文件名，需要添加基础 URL
             // GitHub raw URL: https://raw.githubusercontent.com/zvuc/otoge-db/master/maimai/jacket/
             // jsDelivr CDN: https://cdn.jsdelivr.net/gh/zvuc/otoge-db@master/maimai/jacket/
@@ -850,7 +849,7 @@ function normalizeSongs(data, type, gameId) {
                 // 回退到官方 URL
                 coverUrl = `https://maimaidx.jp/maimai-mobile/img/Music/${s.id}.png`;
             }
-            
+
             return {
                 gameId,
                 id: String(s.id || s.sort || Math.random()),
@@ -871,22 +870,22 @@ function normalizeSongs(data, type, gameId) {
             };
         });
     }
-    
+
     // OTOGE-DB CHUNITHM 格式
     if (type === 'otoge-chunithm') {
         return data.map(s => {
             const levels = [s.lev_bas, s.lev_adv, s.lev_exp, s.lev_mas, s.lev_ult].filter(Boolean);
             const ds = [s.lev_bas_i, s.lev_adv_i, s.lev_exp_i, s.lev_mas_i, s.lev_ult_i].filter(v => v !== undefined && v !== null);
             const charts = [];
-            
+
             if (s.lev_bas) charts.push({ difficulty: 'Basic', level: s.lev_bas, ds: s.lev_bas_i || 0 });
             if (s.lev_adv) charts.push({ difficulty: 'Advanced', level: s.lev_adv, ds: s.lev_adv_i || 0 });
             if (s.lev_exp) charts.push({ difficulty: 'Expert', level: s.lev_exp, ds: s.lev_exp_i || 0 });
             if (s.lev_mas) charts.push({ difficulty: 'Master', level: s.lev_mas, ds: s.lev_mas_i || 0 });
             if (s.lev_ult) charts.push({ difficulty: 'Ultima', level: s.lev_ult, ds: s.lev_ult_i || 0 });
-            
+
             const coverUrl = s.image_url || (s.id ? `https://chunithm.sega.jp/storage/json/jacket/${s.id}.png` : null);
-            
+
             return {
                 gameId,
                 id: String(s.id || s.sort || Math.random()),
@@ -902,20 +901,20 @@ function normalizeSongs(data, type, gameId) {
             };
         });
     }
-    
+
     // OTOGE-DB ONGEKI 格式
     if (type === 'otoge-ongeki') {
         return data.map(s => {
             const charts = [];
-            
+
             if (s.lev_bas) charts.push({ difficulty: 'Basic', level: s.lev_bas, ds: s.lev_bas_i || 0 });
             if (s.lev_adv) charts.push({ difficulty: 'Advanced', level: s.lev_adv, ds: s.lev_adv_i || 0 });
             if (s.lev_exp) charts.push({ difficulty: 'Expert', level: s.lev_exp, ds: s.lev_exp_i || 0 });
             if (s.lev_mas) charts.push({ difficulty: 'Master', level: s.lev_mas, ds: s.lev_mas_i || 0 });
             if (s.lev_lnt) charts.push({ difficulty: 'Lunatic', level: s.lev_lnt, ds: s.lev_lnt_i || 0 });
-            
+
             const coverUrl = s.image_url || null;
-            
+
             return {
                 gameId,
                 id: String(s.id || s.sort || Math.random()),
@@ -931,7 +930,7 @@ function normalizeSongs(data, type, gameId) {
             };
         });
     }
-    
+
     if (type === 'diving-fish-maimai') {
         return data.map(s => ({
             gameId, // 添加游戏ID
@@ -982,7 +981,7 @@ function normalizeSongs(data, type, gameId) {
         return data.map(s => {
             const id = s.meta?.id || String(Math.random());
             const imgHash = s.meta?.img;
-            const coverUrl = imgHash 
+            const coverUrl = imgHash
                 ? `https://ongeki-net.com/ongeki-mobile/img/music/${imgHash}.png`
                 : null;
             // 处理难度数据
@@ -996,7 +995,7 @@ function normalizeSongs(data, type, gameId) {
                     ds: d.const || d.level || 0
                 } : null;
             }).filter(Boolean);
-            
+
             return {
                 gameId, // 添加游戏ID
                 id,
@@ -1041,16 +1040,16 @@ function normalizeSongs(data, type, gameId) {
             'namco': 'ナムコオリジナル',
             'kids': 'キッズ'
         };
-        
+
         return data.map(s => {
-            const coverUrl = s.image?.url 
-                || s.jacket 
-                || s.coverUrl 
+            const coverUrl = s.image?.url
+                || s.jacket
+                || s.coverUrl
                 || (s.songNo ? `https://taiko.namco-ch.net/taiko/images/songimage/${s.songNo}.png` : null);
             // 太鼓难度映射
             const diffMap = {
                 'easy': 'かんたん',
-                'normal': 'ふつう', 
+                'normal': 'ふつう',
                 'hard': 'むずかしい',
                 'oni': 'おに',
                 'ura': '裏おに'
@@ -1067,7 +1066,7 @@ function normalizeSongs(data, type, gameId) {
                     }
                 });
             }
-            
+
             // 处理 genre 数组 -> 字符串
             let category = '';
             if (Array.isArray(s.genre) && s.genre.length > 0) {
@@ -1075,7 +1074,7 @@ function normalizeSongs(data, type, gameId) {
             } else if (typeof s.genre === 'string') {
                 category = genreMap[s.genre] || s.genre;
             }
-            
+
             // 处理 artists 数组 -> 字符串
             let artist = '';
             if (Array.isArray(s.artists) && s.artists.length > 0) {
@@ -1083,7 +1082,7 @@ function normalizeSongs(data, type, gameId) {
             } else if (typeof s.artist === 'string') {
                 artist = s.artist;
             }
-            
+
             // 处理 version 数组 -> 取第一个（最新版本）或显示"多平台"
             let version = '';
             if (Array.isArray(s.version) && s.version.length > 0) {
@@ -1092,7 +1091,7 @@ function normalizeSongs(data, type, gameId) {
             } else if (typeof s.version === 'string') {
                 version = s.version;
             }
-            
+
             return {
                 gameId, // 添加游戏ID
                 id: s.songNo || String(Math.random()),
@@ -1123,7 +1122,7 @@ async function fetchGameSongs(gameId) {
         try {
             console.log(`[获取] ${gameId}: ${url}`);
             // 减少超时时间到 10 秒，避免卡住太久
-            const response = await axios.get(url, { 
+            const response = await axios.get(url, {
                 timeout: 10000,
                 // 添加 headers 避免某些服务器拒绝请求
                 headers: {
@@ -1167,10 +1166,10 @@ app.get('/api/resolve/netease/:shortId', async (req, res) => {
     try {
         const { shortId } = req.params;
         console.log(`[解析] 正在解析网易云短链接: ${shortId}`);
-        
+
         // 网易云短链接会 302 跳转到真实地址
         const shortUrl = `https://163cn.tv/${shortId}`;
-        
+
         const response = await axios.get(shortUrl, {
             maxRedirects: 0, // 不自动跟随重定向
             validateStatus: (status) => status >= 200 && status < 400,
@@ -1185,16 +1184,16 @@ app.get('/api/resolve/netease/:shortId', async (req, res) => {
             }
             throw err;
         });
-        
+
         const location = response.headers.location || response.headers.Location;
-        
+
         if (location) {
             // 从跳转 URL 中提取 ID
             // 歌单: music.163.com/playlist?id=xxx
             // 用户: music.163.com/user/home?id=xxx
             const playlistMatch = location.match(/playlist[?/].*?id[=/](\d+)/i);
             const userMatch = location.match(/user\/home\?id=(\d+)/i);
-            
+
             if (playlistMatch) {
                 console.log(`[解析] 网易云短链接解析成功: 歌单 ${playlistMatch[1]}`);
                 return res.json({
@@ -1204,7 +1203,7 @@ app.get('/api/resolve/netease/:shortId', async (req, res) => {
                     resolvedUrl: location
                 });
             }
-            
+
             if (userMatch) {
                 console.log(`[解析] 网易云短链接解析成功: 用户 ${userMatch[1]}`);
                 return res.json({
@@ -1215,7 +1214,7 @@ app.get('/api/resolve/netease/:shortId', async (req, res) => {
                 });
             }
         }
-        
+
         res.status(400).json({ success: false, error: '无法解析短链接' });
     } catch (error) {
         console.error('解析网易云短链接错误:', error.message);
@@ -1228,10 +1227,10 @@ app.get('/api/resolve/qqmusic/:shortId', async (req, res) => {
     try {
         const { shortId } = req.params;
         console.log(`[解析] 正在解析QQ音乐短链接: ${shortId}`);
-        
+
         // QQ音乐短链接也是 302 跳转
         const shortUrl = `https://c6.y.qq.com/base/fcgi-bin/u?__=${shortId}`;
-        
+
         const response = await axios.get(shortUrl, {
             maxRedirects: 5, // 允许多次跳转
             headers: {
@@ -1239,10 +1238,10 @@ app.get('/api/resolve/qqmusic/:shortId', async (req, res) => {
             },
             timeout: 10000
         });
-        
+
         // 最终 URL 会包含歌单/专辑 ID
         const finalUrl = response.request?.res?.responseUrl || response.config?.url;
-        
+
         if (finalUrl) {
             // 歌单: y.qq.com/n/ryqq/playlist/xxx
             const playlistMatch = finalUrl.match(/playlist\/(\d+)/);
@@ -1250,7 +1249,7 @@ app.get('/api/resolve/qqmusic/:shortId', async (req, res) => {
             const albumMatch = finalUrl.match(/albumDetail\/([a-zA-Z0-9]+)/);
             // 歌手: y.qq.com/n/ryqq/singer/xxx
             const singerMatch = finalUrl.match(/singer\/([a-zA-Z0-9]+)/);
-            
+
             if (playlistMatch) {
                 console.log(`[解析] QQ音乐短链接解析成功: 歌单 ${playlistMatch[1]}`);
                 return res.json({
@@ -1260,7 +1259,7 @@ app.get('/api/resolve/qqmusic/:shortId', async (req, res) => {
                     resolvedUrl: finalUrl
                 });
             }
-            
+
             if (albumMatch) {
                 console.log(`[解析] QQ音乐短链接解析成功: 专辑 ${albumMatch[1]}`);
                 return res.json({
@@ -1271,7 +1270,7 @@ app.get('/api/resolve/qqmusic/:shortId', async (req, res) => {
                     message: '暂不支持专辑导入'
                 });
             }
-            
+
             if (singerMatch) {
                 console.log(`[解析] QQ音乐短链接解析成功: 歌手 ${singerMatch[1]}`);
                 return res.json({
@@ -1282,7 +1281,7 @@ app.get('/api/resolve/qqmusic/:shortId', async (req, res) => {
                     message: '暂不支持歌手主页导入'
                 });
             }
-            
+
             // 用户主页: i2.y.qq.com/n3/other/pages/share/profile_v2/index.html
             const profileMatch = finalUrl.match(/profile_v2.*encrypt_uin=([^&]+)/);
             if (profileMatch) {
@@ -1295,7 +1294,7 @@ app.get('/api/resolve/qqmusic/:shortId', async (req, res) => {
                 });
             }
         }
-        
+
         res.status(400).json({ success: false, error: '无法解析短链接或不支持此类型。QQ音乐请分享具体的歌单链接' });
     } catch (error) {
         console.error('解析QQ音乐短链接错误:', error.message);
@@ -1309,10 +1308,10 @@ app.get('/api/qqmusic/playlist/:id', async (req, res) => {
     try {
         const { id } = req.params;
         console.log(`[QQ音乐] 正在获取歌单: ${id}`);
-        
+
         // QQ音乐歌单详情 API
         const detailUrl = `https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&disstid=${id}&format=json&platform=yqq.json`;
-        
+
         const response = await axios.get(detailUrl, {
             headers: {
                 'Referer': 'https://y.qq.com/',
@@ -1320,14 +1319,14 @@ app.get('/api/qqmusic/playlist/:id', async (req, res) => {
             },
             timeout: 15000
         });
-        
+
         const data = response.data;
-        
+
         if (data.code !== 0 || !data.cdlist || data.cdlist.length === 0) {
             console.error('[QQ音乐] 获取歌单失败:', data);
             return res.status(400).json({ success: false, error: '获取歌单失败，请确认歌单ID正确且为公开歌单' });
         }
-        
+
         const playlist = data.cdlist[0];
         const songs = (playlist.songlist || []).map(s => ({
             id: s.songmid,
@@ -1337,9 +1336,9 @@ app.get('/api/qqmusic/playlist/:id', async (req, res) => {
             coverUrl: s.albummid ? `https://y.qq.com/music/photo_new/T002R300x300M000${s.albummid}.jpg` : '',
             duration: s.interval * 1000
         }));
-        
+
         console.log(`[QQ音乐] 成功获取 ${songs.length} 首歌曲`);
-        
+
         res.json({
             success: true,
             playlist: {
@@ -1364,10 +1363,10 @@ app.get('/api/bilibili/user/:uid/favlist', async (req, res) => {
     try {
         const { uid } = req.params;
         console.log(`[B站] 正在获取用户收藏夹列表: ${uid}`);
-        
+
         // 获取用户创建的收藏夹
         const favUrl = `https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${uid}`;
-        
+
         const response = await axios.get(favUrl, {
             headers: {
                 'Referer': 'https://space.bilibili.com/',
@@ -1375,11 +1374,11 @@ app.get('/api/bilibili/user/:uid/favlist', async (req, res) => {
             },
             timeout: 10000
         });
-        
+
         if (response.data.code !== 0) {
             return res.status(400).json({ success: false, error: response.data.message || '获取收藏夹失败' });
         }
-        
+
         const favList = response.data.data?.list || [];
         const playlists = favList.map(fav => ({
             id: fav.id,
@@ -1388,7 +1387,7 @@ app.get('/api/bilibili/user/:uid/favlist', async (req, res) => {
             trackCount: fav.media_count,
             creator: uid
         }));
-        
+
         console.log(`[B站] 成功获取 ${playlists.length} 个收藏夹`);
         res.json({ success: true, playlists });
     } catch (error) {
@@ -1403,12 +1402,12 @@ app.get('/api/bilibili/favlist/:id', async (req, res) => {
         const { id } = req.params;
         const page = parseInt(req.query.page) || 1;
         const pageSize = 20;
-        
+
         console.log(`[B站] 正在获取收藏夹内容: ${id}, 页码: ${page}`);
-        
+
         // 获取收藏夹内容
         const contentUrl = `https://api.bilibili.com/x/v3/fav/resource/list?media_id=${id}&pn=${page}&ps=${pageSize}&platform=web`;
-        
+
         const response = await axios.get(contentUrl, {
             headers: {
                 'Referer': 'https://space.bilibili.com/',
@@ -1416,14 +1415,14 @@ app.get('/api/bilibili/favlist/:id', async (req, res) => {
             },
             timeout: 10000
         });
-        
+
         if (response.data.code !== 0) {
             return res.status(400).json({ success: false, error: response.data.message || '获取收藏夹内容失败' });
         }
-        
+
         const data = response.data.data;
         const medias = data?.medias || [];
-        
+
         // 提取视频标题作为歌曲名（B站很多是音乐视频）
         const songs = medias.map(m => ({
             id: m.bvid || m.id,
@@ -1433,9 +1432,9 @@ app.get('/api/bilibili/favlist/:id', async (req, res) => {
             coverUrl: m.cover,
             duration: m.duration * 1000
         }));
-        
+
         console.log(`[B站] 成功获取 ${songs.length} 个视频`);
-        
+
         res.json({
             success: true,
             songs,
@@ -1453,15 +1452,15 @@ app.get('/api/bilibili/favlist/:id/all', async (req, res) => {
     try {
         const { id } = req.params;
         console.log(`[B站] 正在获取收藏夹全部内容: ${id}`);
-        
+
         const allSongs = [];
         let page = 1;
         let hasMore = true;
         const pageSize = 20;
-        
+
         while (hasMore && page <= 50) { // 最多50页防止无限循环
             const contentUrl = `https://api.bilibili.com/x/v3/fav/resource/list?media_id=${id}&pn=${page}&ps=${pageSize}&platform=web`;
-            
+
             const response = await axios.get(contentUrl, {
                 headers: {
                     'Referer': 'https://space.bilibili.com/',
@@ -1469,12 +1468,12 @@ app.get('/api/bilibili/favlist/:id/all', async (req, res) => {
                 },
                 timeout: 10000
             });
-            
+
             if (response.data.code !== 0) break;
-            
+
             const data = response.data.data;
             const medias = data?.medias || [];
-            
+
             medias.forEach(m => {
                 allSongs.push({
                     id: m.bvid || m.id,
@@ -1485,14 +1484,14 @@ app.get('/api/bilibili/favlist/:id/all', async (req, res) => {
                     duration: m.duration * 1000
                 });
             });
-            
+
             hasMore = data?.has_more || false;
             page++;
-            
+
             // 简单限流
             await new Promise(r => setTimeout(r, 100));
         }
-        
+
         console.log(`[B站] 成功获取 ${allSongs.length} 个视频`);
         res.json({ success: true, songs: allSongs, total: allSongs.length });
     } catch (error) {
@@ -1508,17 +1507,17 @@ app.post('/api/text/parse', (req, res) => {
         if (!text) {
             return res.status(400).json({ success: false, error: '缺少文本内容' });
         }
-        
+
         // 解析文本，支持多种格式
         // 格式1: 每行一首歌 "歌名"
         // 格式2: 每行 "歌名 - 歌手"
         // 格式3: CSV格式 "歌名,歌手"
         const lines = text.split(/[\n]/).map(l => l.trim()).filter(Boolean);
-        
+
         const songs = lines.map((line, index) => {
             let name = line;
             let artists = '';
-            
+
             // 尝试分割歌名和歌手
             if (line.includes(' - ')) {
                 const parts = line.split(' - ');
@@ -1533,7 +1532,7 @@ app.post('/api/text/parse', (req, res) => {
                 name = parts[0].trim();
                 artists = parts.slice(1).join('|').trim();
             }
-            
+
             return {
                 id: `text_${index}`,
                 name,
@@ -1543,7 +1542,7 @@ app.post('/api/text/parse', (req, res) => {
                 duration: 0
             };
         });
-        
+
         console.log(`[文本] 解析了 ${songs.length} 首歌曲`);
         res.json({ success: true, songs, total: songs.length });
     } catch (error) {
@@ -1650,7 +1649,7 @@ app.get('/api/games', (req, res) => {
 function getCoverFileName(gameId, originalUrl) {
     const crypto = require('crypto');
     const urlHash = crypto.createHash('md5').update(originalUrl).digest('hex').slice(0, 12);
-    
+
     // 安全获取扩展名
     let ext = '.png';
     try {
@@ -1663,12 +1662,12 @@ function getCoverFileName(gameId, originalUrl) {
     } catch (e) {
         // URL 解析失败，使用默认扩展名
     }
-    
+
     // 确保扩展名有效
     if (!['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext.toLowerCase())) {
         ext = '.png';
     }
-    
+
     return `${gameId}_${urlHash}${ext}`;
 }
 
@@ -1687,20 +1686,20 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
-    
+
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
-    
+
     // 确保游戏封面目录存在
     if (!fs.existsSync(gameDir)) {
         fs.mkdirSync(gameDir, { recursive: true });
     }
-    
+
     // 如果已缓存，直接返回
     if (fs.existsSync(localPath)) {
         return localPath;
     }
-    
+
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
@@ -1712,9 +1711,10 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                     'Referer': originalUrl
                 },
                 httpAgent: safeHttpAgent,
-                httpsAgent: safeHttpsAgent
+                httpsAgent: safeHttpsAgent,
+                maxRedirects: 0
             });
-            
+
             fs.writeFileSync(localPath, response.data);
             return localPath;
         } catch (e) {
@@ -1732,16 +1732,16 @@ const coverDownloadQueue = new Map(); // gameId -> Promise
 
 async function batchCacheCovers(gameId, songs) {
     if (!coversConfig.enabled || coverDownloadQueue.has(gameId)) return;
-    
+
     const uncachedSongs = songs.filter(s => s.coverUrl && !isCoverCached(gameId, s.coverUrl));
     if (uncachedSongs.length === 0) return;
-    
+
     console.log(`[封面] 开始缓存 ${gameId}: ${uncachedSongs.length} 张封面`);
-    
+
     const downloadTask = (async () => {
         let downloaded = 0;
         const total = uncachedSongs.length;
-        
+
         // 分批下载，控制并发
         for (let i = 0; i < uncachedSongs.length; i += coversConfig.maxConcurrent) {
             const batch = uncachedSongs.slice(i, i + coversConfig.maxConcurrent);
@@ -1749,17 +1749,17 @@ async function batchCacheCovers(gameId, songs) {
                 const result = await downloadAndCacheCover(gameId, song.coverUrl);
                 if (result) downloaded++;
             }));
-            
+
             // 每50张输出进度
             if ((i + coversConfig.maxConcurrent) % 50 === 0 || i + coversConfig.maxConcurrent >= total) {
                 console.log(`[封面] ${gameId} 进度: ${Math.min(i + coversConfig.maxConcurrent, total)}/${total}`);
             }
         }
-        
+
         console.log(`[封面] ${gameId} 完成: ${downloaded}/${total} 张成功`);
         coverDownloadQueue.delete(gameId);
     })();
-    
+
     coverDownloadQueue.set(gameId, downloadTask);
 }
 
@@ -1767,21 +1767,21 @@ async function batchCacheCovers(gameId, songs) {
 function getCoverUrl(gameId, originalUrl, req) {
     if (!originalUrl) return null;
     if (!coversConfig.enabled) return originalUrl;
-    
+
     const fileName = getCoverFileName(gameId, originalUrl);
     const protocol = req?.protocol || 'http';
     const host = req?.get('host') || `localhost:${PORT}`;
-    
+
     // 如果配置了 CDN 且封面已缓存，直接返回 CDN URL
     if (coversConfig.cdnBaseUrl && isCoverCached(gameId, originalUrl)) {
         return `${coversConfig.cdnBaseUrl}/${gameId}/${fileName}`;
     }
-    
+
     // 如果已缓存，返回本地代理 URL（不带原始 URL 参数）
     if (isCoverCached(gameId, originalUrl)) {
         return `${protocol}://${host}/api/covers/${gameId}/${fileName}`;
     }
-    
+
     // 未缓存时，返回带原始 URL 的代理地址，触发按需下载
     const encodedUrl = encodeURIComponent(originalUrl);
     return `${protocol}://${host}/api/covers/${gameId}/${fileName}?url=${encodedUrl}`;
@@ -1791,7 +1791,7 @@ function getCoverUrl(gameId, originalUrl, req) {
 app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     const { gameId, fileName } = req.params;
     const filePath = path.join(COVERS_DIR, gameId, fileName);
-    
+
     // 如果已缓存，直接返回
     if (fs.existsSync(filePath)) {
         res.set({
@@ -1800,23 +1800,23 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         });
         return res.sendFile(filePath);
     }
-    
+
     // 从查询参数获取原始 URL
     const originalUrl = req.query.url;
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
-    
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
-        
+
         // 确保目录存在
         const gameDir = path.join(COVERS_DIR, gameId);
         if (!fs.existsSync(gameDir)) {
             fs.mkdirSync(gameDir, { recursive: true });
         }
-        
+
         // 下载封面
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
@@ -1825,13 +1825,14 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             httpAgent: safeHttpAgent,
-            httpsAgent: safeHttpsAgent
+            httpsAgent: safeHttpsAgent,
+            maxRedirects: 0
         });
-        
+
         // 保存到本地
         fs.writeFileSync(filePath, response.data);
         console.log(`[封面] 缓存成功 ${gameId}: ${fileName}`);
-        
+
         // 返回图片
         res.set({
             'Cache-Control': 'public, max-age=31536000',
@@ -1851,7 +1852,7 @@ app.get('/api/admin/covers/config', (req, res) => {
     let totalCovers = 0;
     let totalSize = 0;
     const gameStats = {};
-    
+
     if (fs.existsSync(COVERS_DIR)) {
         const gameDirs = fs.readdirSync(COVERS_DIR);
         for (const gameId of gameDirs) {
@@ -1869,7 +1870,7 @@ app.get('/api/admin/covers/config', (req, res) => {
             }
         }
     }
-    
+
     res.json({
         success: true,
         config: coversConfig,
@@ -1886,40 +1887,40 @@ app.get('/api/admin/covers/config', (req, res) => {
 // 更新封面配置
 app.post('/api/admin/covers/config', express.json(), (req, res) => {
     const { enabled, cdnBaseUrl, maxConcurrent, retryCount, timeout } = req.body;
-    
+
     if (typeof enabled === 'boolean') coversConfig.enabled = enabled;
     if (typeof cdnBaseUrl === 'string') coversConfig.cdnBaseUrl = cdnBaseUrl.replace(/\/$/, '');
     if (typeof maxConcurrent === 'number') coversConfig.maxConcurrent = Math.max(1, Math.min(20, maxConcurrent));
     if (typeof retryCount === 'number') coversConfig.retryCount = Math.max(1, Math.min(10, retryCount));
     if (typeof timeout === 'number') coversConfig.timeout = Math.max(5000, Math.min(60000, timeout));
-    
+
     saveCoversConfig();
     console.log('[封面] 配置已更新:', coversConfig);
-    
+
     res.json({ success: true, config: coversConfig });
 });
 
 // 手动触发封面缓存
 app.post('/api/admin/covers/cache/:gameId', async (req, res) => {
     const { gameId } = req.params;
-    
+
     if (!GAMES[gameId]) {
         return res.status(400).json({ success: false, error: '无效的游戏ID' });
     }
-    
+
     try {
         const songs = await fetchGameSongs(gameId);
         if (songs.length === 0) {
             return res.json({ success: false, error: '没有歌曲数据' });
         }
-        
+
         // 统计缓存状态
         const cached = songs.filter(s => s.coverUrl && isCoverCached(gameId, s.coverUrl)).length;
         const uncached = songs.filter(s => s.coverUrl && !isCoverCached(gameId, s.coverUrl)).length;
-        
+
         // 开始后台缓存
         batchCacheCovers(gameId, songs);
-        
+
         res.json({
             success: true,
             message: `开始缓存 ${gameId} 封面`,
@@ -1938,7 +1939,7 @@ app.post('/api/admin/covers/cache/:gameId', async (req, res) => {
 // 清除封面缓存
 app.post('/api/admin/covers/clear', (req, res) => {
     const { gameId } = req.body;
-    
+
     try {
         if (gameId) {
             const gameDir = path.join(COVERS_DIR, gameId);
@@ -2544,7 +2545,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
             const len2 = s2.length;
             if (len1 === 0) return len2;
             if (len2 === 0) return len1;
-            
+
             // 如果字符串过长，回退到动态分配数组，避免越界
             if (len1 >= LEVENSHTEIN_BUFFER_SIZE) {
                 const row = new Uint16Array(len1 + 1);
@@ -2573,7 +2574,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                 }
                 return row[len1];
             }
-            
+
             // 使用共享 buffer 以减少 GC 压力
             for (let j = 0; j <= len1; j++) {
                 sharedLevenshteinBuffer[j] = j;
@@ -2655,7 +2656,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
             }
             return 0.1; // 降低完全不匹配的分数
         };
-        
+
         // 计算标题长度相似度（避免短标题误匹配长标题）
         const lengthSimilarity = (str1, str2) => {
             const len1 = str1.length;
@@ -2681,10 +2682,10 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                     const artistScore = artistMatch(userSong.artists, arcadeSong.artist);
                     // 精确匹配标题，综合艺术家相似度
                     const finalScore = 0.9 + (artistScore * 0.1);
-                    
+
                     // 生成匹配标签
                     const tags = [];
-                    
+
                     // 完美匹配：标题精确匹配 + 艺术家高度匹配
                     if (artistScore >= 0.7) {
                         tags.push('perfect_match'); // 完美匹配
@@ -2695,7 +2696,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                         tags.push('different_artist'); // 可能翻唱/游戏版本
                     }
                     tags.push('exact_title'); // 标题完全匹配
-                    
+
                     match = {
                         userSong,
                         arcadeSong,
@@ -2710,7 +2711,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                     // 短标题（<6字符）需要更严格的匹配
                     const isShortTitle = userSong.name.length < 6;
                     const threshold = isShortTitle ? -500 : -1200; // 更严格的阈值
-                    
+
                     const results = fuzzysort.go(userSong.name, preparedSongs, {
                         key: 'preparedTitle',
                         limit: 3,
@@ -2724,31 +2725,31 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                     for (const result of results) {
                         const arcadeTitle = result.obj.title || '';
                         const userTitle = userSong.name;
-                        
+
                         // 计算标题相似度
                         const titleScore = Math.max(0, (result.score + 1200) / 1200);
-                        
+
                         // 长度相似度检查 - 更严格
                         const lenScore = lengthSimilarity(userTitle, arcadeTitle);
-                        
+
                         // 长度差异过大直接跳过
                         if (lenScore < 0.6) continue;
-                        
+
                         // 短标题必须几乎完全匹配
                         if (isShortTitle && titleScore < 0.85) continue;
-                        
+
                         // 标准化后的标题
                         const normalizedUser = normalizeTitle(userTitle);
                         const normalizedArcade = normalizeTitle(arcadeTitle);
-                        
+
                         // 计算编辑距离相似度（更精确）
                         const editDistScore = 1 - (levenshteinDistance(normalizedUser, normalizedArcade) / Math.max(normalizedUser.length, normalizedArcade.length, 1));
-                        
+
                         // 如果编辑距离相似度太低，跳过
                         if (editDistScore < 0.7) continue;
-                        
+
                         const artistScore = artistMatch(userSong.artists, result.obj.artist);
-                        
+
                         // 标题几乎完全相同（>=95%）时，艺术家权重降低（可能是翻唱/游戏版本）
                         // 标题不太相同时，需要艺术家来辅助确认
                         let combinedScore;
@@ -2765,18 +2766,18 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                             if (artistScore < 0.3) continue;
                             combinedScore = (editDistScore * 0.45) + (artistScore * 0.40) + (lenScore * 0.15);
                         }
-                        
+
                         // 阈值 0.88（88%）
                         const minCombinedScore = 0.88;
                         if (combinedScore >= minCombinedScore && combinedScore > bestScore) {
                             // 生成匹配标签
                             const tags = [];
-                            
+
                             // 完美匹配：标题高度相似 + 艺术家高度匹配
                             if (editDistScore >= 0.95 && artistScore >= 0.7) {
                                 tags.push('perfect_match'); // 完美匹配
                             }
-                            
+
                             // 艺术家标签
                             if (artistScore >= 0.7) {
                                 tags.push('same_artist'); // 同歌手
@@ -2785,14 +2786,14 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                             } else {
                                 tags.push('different_artist'); // 可能翻唱/游戏版本
                             }
-                            
+
                             // 标题标签
                             if (editDistScore >= 0.95) {
                                 tags.push('exact_title'); // 标题完全匹配
                             } else {
                                 tags.push('similar_title'); // 标题相似
                             }
-                            
+
                             bestScore = combinedScore;
                             bestMatch = {
                                 userSong,
@@ -2830,7 +2831,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
                                 matchResultsForLog[gameId] = { matches: [] };
                             }
                             matchResultsForLog[gameId].matches.push(match);
-                            
+
                             // 替换封面 URL 为缓存版本
                             if (match.arcadeSong && match.arcadeSong.coverUrl) {
                                 match.arcadeSong.coverUrl = getCoverUrl(gameId, match.arcadeSong.coverUrl, req);
@@ -3047,23 +3048,24 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
 
     const songId = `${song.gameId}_${song.id}_${Date.now()}`;
     const imagePath = path.join(SONG_IMAGE_DIR, `${songId}.png`);
-    
+
     // 获取封面图片 Base64
     let coverBase64 = null;
     if (song.coverUrl) {
         try {
-            const coverResp = await axios.get(song.coverUrl, { 
+            const coverResp = await axios.get(song.coverUrl, {
                 responseType: 'arraybuffer',
                 timeout: 5000,
                 httpAgent: safeHttpAgent,
-                httpsAgent: safeHttpsAgent
+                httpsAgent: safeHttpsAgent,
+                maxRedirects: 0
             });
             coverBase64 = `data:image/png;base64,${Buffer.from(coverResp.data).toString('base64')}`;
         } catch (e) {
             console.warn('[单曲图] 封面获取失败:', e.message);
         }
     }
-    
+
     // 获取游戏 Logo
     let gameLogoBase64 = null;
     const GAME_LOGOS = {
@@ -3075,7 +3077,7 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
         'ongeki': 'logos/ongeki.webp',
         'taiko': 'logos/taiko.png'
     };
-    
+
     const logoRelPath = GAME_LOGOS[song.gameId];
     if (logoRelPath) {
         try {
@@ -3108,7 +3110,7 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     } catch (e) {
         console.warn('[单曲图] 二维码生成失败:', e.message);
     }
-    
+
     // 难度颜色
     const difficultyColors = {
         'Basic': '#22c55e',
@@ -3124,7 +3126,7 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
         'おに': '#ec4899',
         '裏おに': '#a855f7'
     };
-    
+
     // 生成难度块
     const charts = song.charts || [];
     const maxDiffs = 5;
@@ -3132,13 +3134,13 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     // 计算整体宽度，每个块宽 64，间距 8
     const totalDiffWidth = displayCharts.length * 64 + (displayCharts.length - 1) * 8;
     const startX = (480 - 40 - totalDiffWidth) / 2; // (总宽 - 卡片边距 - 内容宽) / 2
-    
+
     const diffBlocks = displayCharts.map((c, i) => {
         const color = difficultyColors[c.difficulty] || '#64748b';
         const x = startX + i * 72;
         let shortDiff = c.difficulty?.substring(0, 3).toUpperCase() || '?';
         if (c.difficulty === 'Re:Master') shortDiff = 'REM';
-        
+
         return `
             <g transform="translate(${x}, 0)">
                 <rect width="64" height="48" rx="10" fill="${color}"/>
@@ -3147,13 +3149,13 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
             </g>
         `;
     }).join('');
-    
+
     // 游戏颜色
     const gameColor = gameConfig?.color || '#22d3ee';
-    
+
     const width = 480;
     const height = 760;
-    
+
     // 动态计算字号以防溢出
     const title = song.title || '';
     const artist = song.artist || '';
@@ -3161,7 +3163,7 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
     const titleFontSize = title.length > 14 ? Math.max(18, 28 - (title.length - 14) * 0.8) : 28;
     // 艺术家字号：基准 15
     const artistFontSize = artist.length > 24 ? 13 : 15;
-    
+
     // BPM 格式化 (太鼓等游戏的 BPM 可能是对象 {min, max})
     let bpmText = '?';
     if (song.bpm) {
@@ -3177,7 +3179,7 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
             bpmText = String(song.bpm);
         }
     }
-    
+
     const svg = `
         <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
             <defs>
@@ -3198,18 +3200,18 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
                     <path d="M 30 0 L 0 0 0 30" fill="none" stroke="white" stroke-width="1" stroke-opacity="0.3"/>
                 </pattern>
             </defs>
-            
+
             <!-- 1. 动态背景 (丰富化) -->
             <rect width="${width}" height="${height}" fill="#f1f5f9"/>
-            
+
             <!-- 彩色光斑 -->
             <circle cx="0" cy="0" r="300" fill="${gameColor}" opacity="0.2" filter="url(#blur50)"/>
             <circle cx="${width}" cy="${height}" r="350" fill="#ec4899" opacity="0.15" filter="url(#blur50)"/>
             <circle cx="${width}" cy="0" r="200" fill="#8b5cf6" opacity="0.1" filter="url(#blur50)"/>
-            
+
             <!-- 叠加网格纹理 -->
             <rect width="${width}" height="${height}" fill="url(#grid)"/>
-            
+
             <!-- 全屏模糊封面 -->
             ${coverBase64 ? `
                 <image x="-50" y="100" width="${width+100}" height="600" href="${coverBase64}" preserveAspectRatio="xMidYMid slice" opacity="0.08" filter="url(#blur20)"/>
@@ -3222,7 +3224,7 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
 
             <!-- 卡片内容 -->
             <g transform="translate(24, 24)">
-                
+
                 <!-- 顶部：随机歌曲标签 -->
                 <g transform="translate(${(width-48)/2}, 30)">
                     <rect x="-60" y="-14" width="120" height="28" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
@@ -3255,10 +3257,10 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
                 <g transform="translate(${(width-48)/2}, 400)" text-anchor="middle">
                     <!-- 标题：限制长度，动态字号 -->
                     <text y="0" font-size="${titleFontSize}" fill="#1e293b" font-weight="900" style="font-family: sans-serif;">${escapeXml(title.substring(0, 30))}${title.length > 30 ? '...' : ''}</text>
-                    
+
                     <!-- 艺术家：限制长度 -->
                     <text y="30" font-size="${artistFontSize}" fill="#64748b" font-weight="500">${escapeXml(artist.substring(0, 40))}${artist.length > 40 ? '...' : ''}</text>
-                    
+
                     <!-- 信息胶囊 -->
                     <g transform="translate(0, 70)">
                         <rect x="-90" y="-16" width="180" height="32" rx="16" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
@@ -3267,16 +3269,16 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
                         <text x="45" y="5" font-size="13" fill="#64748b" text-anchor="middle" font-weight="bold">${escapeXml((song.category || 'Unknown').substring(0, 8))}</text>
                     </g>
                 </g>
-                
+
                 <!-- 难度展示区域 -->
                 <g transform="translate(0, 520)">
                     ${diffBlocks}
                 </g>
-                
+
                 <!-- 底部信息区 -->
                 <g transform="translate(0, 600)">
                     <line x1="32" y1="0" x2="${width-80}" y2="0" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="6 6" stroke-linecap="round"/>
-                    
+
                     <!-- 左侧：RHYTHMSYNC Logo + Made by -->
                     <g transform="translate(32, 45)">
                         <!-- Logo 图形 -->
@@ -3288,11 +3290,11 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
                         <text x="32" y="16" font-size="20" font-weight="900" style="font-style: italic; letter-spacing: -0.5px;">
                             <tspan fill="#1e293b">RHYTHM</tspan><tspan fill="#06b6d4">SYNC</tspan>
                         </text>
-                        
+
                         <!-- MADE BY DUOGEYU -->
                         <text x="0" y="45" font-size="10" fill="#94a3b8" font-weight="500" letter-spacing="1" text-transform="uppercase">MADE BY DUOGEYU</text>
                     </g>
-                    
+
                     <!-- 右侧：二维码 -->
                     <g transform="translate(${width-48-32-64}, 12)">
                         ${qrCodeBase64 ? `
@@ -3303,10 +3305,10 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
             </g>
         </svg>
     `;
-    
+
     await sharp(Buffer.from(svg)).png().toFile(imagePath);
     console.log(`[单曲图] 生成成功: ${songId}`);
-    
+
     return { imagePath, songId };
 }
 
@@ -3320,7 +3322,7 @@ async function generateSongImage(song, gameConfig, websiteUrl) {
  *   - minLevel: 最低等级 (可选，如 "13", "14+")
  *   - maxLevel: 最高等级 (可选)
  *   - image: 是否生成分享图 (可选，仅当 count=1 时有效)
- * 
+ *
  * 示例:
  *   /api/random                           - 随机一首任意游戏的歌
  *   /api/random?game=maimai               - 随机一首 maimai 的歌
@@ -3334,7 +3336,7 @@ app.get('/api/random', async (req, res) => {
         const { game, count = 1, difficulty, minLevel, maxLevel, image } = req.query;
         const resultCount = Math.min(Math.max(1, parseInt(count) || 1), 10);
         const generateImg = image === 'true' || image === '1';
-        
+
         // 确定游戏
         let targetGames = Object.keys(GAME_CONFIG);
         if (game) {
@@ -3347,7 +3349,7 @@ app.get('/api/random', async (req, res) => {
             }
             targetGames = [game];
         }
-        
+
         // 获取歌曲
         let allSongs = [];
         for (const gameId of targetGames) {
@@ -3358,30 +3360,30 @@ app.get('/api/random', async (req, res) => {
                 console.warn(`[随机] 获取 ${gameId} 失败: ${e.message}`);
             }
         }
-        
+
         if (allSongs.length === 0) {
             return res.status(500).json({ success: false, error: '无法获取歌曲数据' });
         }
-        
+
         // 难度筛选
         if (difficulty) {
-            allSongs = allSongs.filter(s => 
+            allSongs = allSongs.filter(s =>
                 s.charts?.some(c => c.difficulty?.toLowerCase() === difficulty.toLowerCase())
             );
         }
-        
+
         // 等级筛选辅助函数
         const parseLevel = (lvl) => {
             if (!lvl) return 0;
             const str = String(lvl).replace('+', '.5');
             return parseFloat(str) || 0;
         };
-        
+
         // 等级筛选
         if (minLevel || maxLevel) {
             const minLvl = parseLevel(minLevel) || 0;
             const maxLvl = parseLevel(maxLevel) || 99;
-            
+
             allSongs = allSongs.filter(s => {
                 const levels = s.levels || s.charts?.map(c => c.level) || [];
                 return levels.some(lvl => {
@@ -3390,19 +3392,19 @@ app.get('/api/random', async (req, res) => {
                 });
             });
         }
-        
+
         if (allSongs.length === 0) {
-            return res.status(404).json({ 
-                success: false, 
+            return res.status(404).json({
+                success: false,
                 error: '没有符合条件的歌曲',
                 filters: { game, difficulty, minLevel, maxLevel }
             });
         }
-        
+
         // 随机选择
         const shuffled = allSongs.sort(() => Math.random() - 0.5);
         const selected = shuffled.slice(0, resultCount);
-        
+
         // 格式化输出
         const result = selected.map(s => ({
             gameId: s.gameId,
@@ -3418,7 +3420,7 @@ app.get('/api/random', async (req, res) => {
             charts: s.charts || [],
             levels: s.levels || []
         }));
-        
+
         // 生成图片 (仅单曲时)
         let imageUrl = null;
         let songImageId = null;
@@ -3432,7 +3434,7 @@ app.get('/api/random', async (req, res) => {
                 console.error('[随机] 生成图片失败:', e.message);
             }
         }
-        
+
         const response = {
             success: true,
             count: result.length,
@@ -3440,14 +3442,14 @@ app.get('/api/random', async (req, res) => {
             filters: { game: game || 'all', difficulty, minLevel, maxLevel },
             songs: resultCount === 1 ? result[0] : result
         };
-        
+
         if (imageUrl) {
             response.imageUrl = imageUrl;
             response.imageId = songImageId;
         }
-        
+
         res.json(response);
-        
+
     } catch (error) {
         console.error('[随机API] 错误:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -3461,11 +3463,11 @@ app.get('/api/random', async (req, res) => {
 app.get('/api/random/image/:id', (req, res) => {
     const { id } = req.params;
     const imagePath = path.join(SONG_IMAGE_DIR, `${id}.png`);
-    
+
     if (!fs.existsSync(imagePath)) {
         return res.status(404).json({ error: '图片不存在或已过期' });
     }
-    
+
     const imageBuffer = fs.readFileSync(imagePath);
     res.set('Content-Type', 'image/png');
     res.set('Content-Length', imageBuffer.length);
@@ -3483,7 +3485,7 @@ app.get('/api/random/image/:id', (req, res) => {
  *   - difficulty: 难度筛选 (可选)
  *   - minLevel: 最低等级 (可选)
  *   - maxLevel: 最高等级 (可选)
- * 
+ *
  * 示例:
  *   /api/songs/maimai                           - 获取 maimai 曲库
  *   /api/songs/chunithm?search=freedom          - 搜索 CHUNITHM 中包含 freedom 的歌
@@ -3493,7 +3495,7 @@ app.get('/api/songs/:gameId', async (req, res) => {
     try {
         const { gameId } = req.params;
         const { page = 1, limit = 50, search, category, difficulty, minLevel, maxLevel } = req.query;
-        
+
         if (!GAME_CONFIG[gameId]) {
             return res.status(400).json({
                 success: false,
@@ -3501,43 +3503,43 @@ app.get('/api/songs/:gameId', async (req, res) => {
                 availableGames: Object.keys(GAME_CONFIG)
             });
         }
-        
+
         let songs = await fetchGameSongs(gameId);
-        
+
         // 搜索筛选
         if (search) {
             const query = search.toLowerCase();
-            songs = songs.filter(s => 
+            songs = songs.filter(s =>
                 (s.title || '').toLowerCase().includes(query) ||
                 (s.artist || '').toLowerCase().includes(query)
             );
         }
-        
+
         // 分类筛选
         if (category) {
-            songs = songs.filter(s => 
+            songs = songs.filter(s =>
                 (s.category || '').toLowerCase().includes(category.toLowerCase())
             );
         }
-        
+
         // 难度筛选
         if (difficulty) {
-            songs = songs.filter(s => 
+            songs = songs.filter(s =>
                 s.charts?.some(c => c.difficulty?.toLowerCase() === difficulty.toLowerCase())
             );
         }
-        
+
         // 等级筛选
         const parseLevel = (lvl) => {
             if (!lvl) return 0;
             const str = String(lvl).replace('+', '.5');
             return parseFloat(str) || 0;
         };
-        
+
         if (minLevel || maxLevel) {
             const minLvl = parseLevel(minLevel) || 0;
             const maxLvl = parseLevel(maxLevel) || 99;
-            
+
             songs = songs.filter(s => {
                 const levels = s.levels || s.charts?.map(c => c.level) || [];
                 return levels.some(lvl => {
@@ -3546,7 +3548,7 @@ app.get('/api/songs/:gameId', async (req, res) => {
                 });
             });
         }
-        
+
         // 分页
         const pageNum = Math.max(1, parseInt(page) || 1);
         const pageSize = Math.min(Math.max(1, parseInt(limit) || 50), 200);
@@ -3554,7 +3556,7 @@ app.get('/api/songs/:gameId', async (req, res) => {
         const totalPages = Math.ceil(totalCount / pageSize);
         const startIndex = (pageNum - 1) * pageSize;
         const paginatedSongs = songs.slice(startIndex, startIndex + pageSize);
-        
+
         res.json({
             success: true,
             gameId,
@@ -3570,7 +3572,7 @@ app.get('/api/songs/:gameId', async (req, res) => {
             filters: { search, category, difficulty, minLevel, maxLevel },
             songs: paginatedSongs
         });
-        
+
     } catch (error) {
         console.error('[曲库API] 错误:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -3584,7 +3586,7 @@ app.get('/api/songs/:gameId', async (req, res) => {
  *   - q: 搜索关键词 (必填)
  *   - games: 要搜索的游戏，逗号分隔 (可选，默认全部)
  *   - limit: 每个游戏返回的最大数量 (默认10，最大50)
- * 
+ *
  * 示例:
  *   /api/search?q=freedom dive            - 在所有游戏中搜索
  *   /api/search?q=初音&games=maimai,chunithm  - 只在指定游戏中搜索
@@ -3592,14 +3594,14 @@ app.get('/api/songs/:gameId', async (req, res) => {
 app.get('/api/search', async (req, res) => {
     try {
         const { q, games, limit = 10 } = req.query;
-        
+
         if (!q || q.trim().length < 1) {
             return res.status(400).json({ success: false, error: '缺少搜索关键词 (q 参数)' });
         }
-        
+
         const query = q.toLowerCase().trim();
         const resultLimit = Math.min(Math.max(1, parseInt(limit) || 10), 50);
-        
+
         // 确定搜索范围
         let targetGames = Object.keys(GAME_CONFIG);
         if (games) {
@@ -3608,21 +3610,21 @@ app.get('/api/search', async (req, res) => {
                 targetGames = requestedGames;
             }
         }
-        
+
         const results = {};
         let totalMatches = 0;
-        
+
         for (const gameId of targetGames) {
             try {
                 const songs = await fetchGameSongs(gameId);
-                
+
                 // 使用 fuzzysort 进行模糊搜索
                 const fuzzied = fuzzysort.go(query, songs, {
                     keys: ['title', 'artist'],
                     limit: resultLimit,
                     threshold: -10000
                 });
-                
+
                 if (fuzzied.length > 0) {
                     results[gameId] = {
                         gameName: GAME_CONFIG[gameId].name,
@@ -3646,7 +3648,7 @@ app.get('/api/search', async (req, res) => {
                 console.warn(`[搜索] 获取 ${gameId} 失败: ${e.message}`);
             }
         }
-        
+
         res.json({
             success: true,
             query: q,
@@ -3654,7 +3656,7 @@ app.get('/api/search', async (req, res) => {
             searchedGames: targetGames,
             results
         });
-        
+
     } catch (error) {
         console.error('[搜索API] 错误:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -3667,7 +3669,7 @@ app.get('/api/search', async (req, res) => {
  * 查询参数:
  *   - title: 歌曲标题 (必填)
  *   - artist: 艺术家 (可选，提高匹配精度)
- * 
+ *
  * 示例:
  *   /api/check?title=FREEDOM DiVE
  *   /api/check?title=千本桜&artist=黒うさP
@@ -3675,11 +3677,11 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/check', async (req, res) => {
     try {
         const { title, artist } = req.query;
-        
+
         if (!title || title.trim().length < 1) {
             return res.status(400).json({ success: false, error: '缺少歌曲标题 (title 参数)' });
         }
-        
+
         const normalizeTitle = (str) => {
             if (!str) return '';
             return str.toLowerCase()
@@ -3690,27 +3692,27 @@ app.get('/api/check', async (req, res) => {
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
         };
-        
+
         const normalizedTitle = normalizeTitle(title);
         const normalizedArtist = artist ? normalizeTitle(artist) : null;
-        
+
         const matches = {};
         let foundInGames = 0;
-        
+
         for (const [gameId, config] of Object.entries(GAME_CONFIG)) {
             try {
                 const songs = await fetchGameSongs(gameId);
-                
+
                 // 精确匹配优先
                 let match = songs.find(s => normalizeTitle(s.title) === normalizedTitle);
-                
+
                 // 如果有艺术家，还要匹配艺术家
                 if (match && normalizedArtist) {
                     const artistMatch = normalizeTitle(match.artist).includes(normalizedArtist) ||
                                        normalizedArtist.includes(normalizeTitle(match.artist));
                     if (!artistMatch) {
                         // 艺术家不匹配，尝试找更精确的
-                        const betterMatch = songs.find(s => 
+                        const betterMatch = songs.find(s =>
                             normalizeTitle(s.title) === normalizedTitle &&
                             (normalizeTitle(s.artist).includes(normalizedArtist) ||
                              normalizedArtist.includes(normalizeTitle(s.artist)))
@@ -3718,7 +3720,7 @@ app.get('/api/check', async (req, res) => {
                         if (betterMatch) match = betterMatch;
                     }
                 }
-                
+
                 // 如果没有精确匹配，尝试模糊匹配
                 if (!match) {
                     const fuzzied = fuzzysort.go(title, songs, {
@@ -3730,7 +3732,7 @@ app.get('/api/check', async (req, res) => {
                         match = fuzzied[0].obj;
                     }
                 }
-                
+
                 if (match) {
                     matches[gameId] = {
                         gameName: config.name,
@@ -3751,7 +3753,7 @@ app.get('/api/check', async (req, res) => {
                 console.warn(`[检查] 获取 ${gameId} 失败: ${e.message}`);
             }
         }
-        
+
         res.json({
             success: true,
             query: { title, artist },
@@ -3759,7 +3761,7 @@ app.get('/api/check', async (req, res) => {
             totalGames: Object.keys(GAME_CONFIG).length,
             matches
         });
-        
+
     } catch (error) {
         console.error('[检查API] 错误:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -3780,7 +3782,7 @@ app.get('/api/docs', (req, res) => {
             'GET /api/health': '健康检查',
             'GET /api/games': '获取支持的游戏列表',
             'GET /api/docs': '本文档',
-            
+
             // 机器人友好 API
             'GET /api/random': {
                 description: '随机获取歌曲',
@@ -3823,7 +3825,7 @@ app.get('/api/docs', (req, res) => {
                 },
                 example: '/api/check?title=FREEDOM DiVE'
             },
-            
+
             // 🤖 机器人全流程 API
             'POST /api/bot/query': {
                 description: '一站式歌单查询 (机器人专用)',
@@ -3838,17 +3840,17 @@ app.get('/api/docs', (req, res) => {
             },
             'GET /api/bot/result/:id': '获取保存的查询结果',
             'GET /api/bot/result/:id/image': '获取结果分享图',
-            
+
             // 歌单匹配 API
             'POST /api/match/start': '开始歌单匹配 (需要歌曲数据)',
             'GET /api/match/stream/:sessionId': '流式获取匹配结果 (SSE)',
-            
+
             // 平台歌单获取
             'GET /api/netease/user/:uid/playlists': '获取网易云用户歌单',
             'GET /api/netease/playlist/:id': '获取网易云歌单详情',
             'GET /api/qqmusic/playlist/:id': '获取QQ音乐歌单',
             'GET /api/bilibili/user/:uid/favlist': '获取B站用户收藏夹',
-            
+
             // 分享功能
             'POST /api/share/create': '创建分享链接',
             'GET /api/share/:shareId': '获取分享数据'
@@ -3874,11 +3876,11 @@ if (!fs.existsSync(BOT_RESULT_DIR)) {
 function cleanupExpiredBotResults() {
     const now = Date.now();
     const expiryMs = BOT_RESULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-    
+
     try {
         const files = fs.readdirSync(BOT_RESULT_DIR);
         let cleaned = 0;
-        
+
         for (const file of files) {
             if (!file.endsWith('.json')) continue;
             const filePath = path.join(BOT_RESULT_DIR, file);
@@ -3896,7 +3898,7 @@ function cleanupExpiredBotResults() {
                 cleaned++;
             }
         }
-        
+
         if (cleaned > 0) console.log(`[Bot] 清理了 ${cleaned} 个过期结果`);
     } catch (e) {
         console.error('[Bot] 清理失败:', e.message);
@@ -3909,7 +3911,7 @@ cleanupExpiredBotResults();
 /**
  * 机器人一站式查询 API
  * POST /api/bot/query
- * 
+ *
  * 支持的输入格式:
  * - 网易云歌单链接: https://music.163.com/playlist?id=xxx
  * - 网易云用户ID: 纯数字
@@ -3918,23 +3920,23 @@ cleanupExpiredBotResults();
  */
 app.post('/api/bot/query', async (req, res) => {
     const startTime = Date.now();
-    
+
     try {
         const { input, playlistId: specifiedPlaylistId, siteUrl, generateImage = true } = req.body;
-        
+
         if (!input) {
             return res.status(400).json({ success: false, error: '缺少 input 参数' });
         }
-        
+
         console.log(`[Bot] 开始查询: ${input.substring(0, 100)}...`);
-        
+
         // 1. 解析输入
         const parsed = parseInput(input);
         console.log(`[Bot] 解析结果: ${parsed.platform} - ${parsed.type}`);
-        
+
         let userSongs = [];
         let playlist = null;
-        
+
         // 2. 根据平台获取歌曲
         if (parsed.platform === 'text') {
             // 文本导入
@@ -3979,7 +3981,7 @@ app.post('/api/bot/query', async (req, res) => {
                 // 直接是歌单链接
                 const playlistResult = await playlist_detail({ id: parsed.id });
                 const playlistInfo = playlistResult.body.playlist;
-                
+
                 playlist = {
                     id: parsed.id,
                     name: playlistInfo.name,
@@ -3987,7 +3989,7 @@ app.post('/api/bot/query', async (req, res) => {
                     trackCount: playlistInfo.trackCount,
                     creator: playlistInfo.creator?.nickname || '未知'
                 };
-                
+
                 // 获取歌曲
                 const tracksResult = await playlist_track_all({ id: parsed.id });
                 userSongs = tracksResult.body.songs.map(s => ({
@@ -4010,7 +4012,7 @@ app.post('/api/bot/query', async (req, res) => {
                         trackCount: p.trackCount,
                         creator: p.creator?.nickname || '未知'
                     }));
-                    
+
                     return res.json({
                         success: true,
                         needSelectPlaylist: true,
@@ -4018,11 +4020,11 @@ app.post('/api/bot/query', async (req, res) => {
                         message: '请选择一个歌单，然后在请求中添加 playlistId 参数'
                     });
                 }
-                
+
                 // 获取指定歌单
                 const playlistResult = await playlist_detail({ id: specifiedPlaylistId });
                 const playlistInfo = playlistResult.body.playlist;
-                
+
                 playlist = {
                     id: specifiedPlaylistId,
                     name: playlistInfo.name,
@@ -4030,7 +4032,7 @@ app.post('/api/bot/query', async (req, res) => {
                     trackCount: playlistInfo.trackCount,
                     creator: playlistInfo.creator?.nickname || '未知'
                 };
-                
+
                 const tracksResult = await playlist_track_all({ id: specifiedPlaylistId });
                 userSongs = tracksResult.body.songs.map(s => ({
                     id: s.id,
@@ -4047,29 +4049,29 @@ app.post('/api/bot/query', async (req, res) => {
                 params: { disstid: parsed.id, format: 'json' },
                 headers: { Referer: 'https://y.qq.com/' }
             }).catch(() => null);
-            
+
             // 备用方案：使用内部 API
             if (!qqResult || !qqResult.data) {
                 return res.status(400).json({ success: false, error: 'QQ音乐歌单获取失败，请使用网易云链接' });
             }
         } else {
-            return res.status(400).json({ 
-                success: false, 
+            return res.status(400).json({
+                success: false,
                 error: `暂不支持该平台: ${parsed.platform}`,
-                parsed 
+                parsed
             });
         }
-        
+
         if (userSongs.length === 0) {
             return res.status(400).json({ success: false, error: '未能获取到歌曲' });
         }
-        
+
         console.log(`[Bot] 获取到 ${userSongs.length} 首歌曲，开始匹配...`);
-        
+
         // 3. 进行匹配
         const gameIds = Object.keys(GAME_CONFIG);
         const results = {};
-        
+
         // 准备匹配函数
         const normalizeTitle = (str) => {
             if (!str) return '';
@@ -4081,33 +4083,33 @@ app.post('/api/bot/query', async (req, res) => {
                 .replace(/[）)]/g, ')')
                 .replace(/[－-]/g, '-');
         };
-        
+
         // 并行获取所有游戏数据并匹配
         await Promise.all(gameIds.map(async (gameId) => {
             try {
                 const gameSongs = await fetchGameSongs(gameId);
-                
+
                 // 建立索引
                 const titleMap = new Map();
                 gameSongs.forEach(s => {
                     titleMap.set(normalizeTitle(s.title), s);
                     titleMap.set(s.title, s);
                 });
-                
+
                 const fuse = new Fuse(gameSongs, {
                     keys: ['title', 'artist'],
                     threshold: 0.3,
                     includeScore: true
                 });
-                
+
                 const matches = [];
-                
+
                 for (const userSong of userSongs) {
                     const normalizedUserTitle = normalizeTitle(userSong.name);
-                    
+
                     // 精确匹配
                     let match = titleMap.get(normalizedUserTitle);
-                    
+
                     // 模糊匹配
                     if (!match) {
                         const fuzzyResults = fuse.search(userSong.name, { limit: 1 });
@@ -4115,21 +4117,21 @@ app.post('/api/bot/query', async (req, res) => {
                             match = fuzzyResults[0].item;
                         }
                     }
-                    
+
                     if (match) {
                         // 判断匹配标签
                         const tags = [];
                         const isTitleExact = normalizeTitle(match.title) === normalizedUserTitle;
                         const userArtistNorm = normalizeTitle(userSong.artists);
                         const matchArtistNorm = normalizeTitle(match.artist);
-                        const isArtistSame = userArtistNorm && matchArtistNorm && 
+                        const isArtistSame = userArtistNorm && matchArtistNorm &&
                             (userArtistNorm.includes(matchArtistNorm) || matchArtistNorm.includes(userArtistNorm));
-                        
+
                         if (isTitleExact && isArtistSame) tags.push('perfect_match');
                         else if (isArtistSame) tags.push('same_artist');
                         else if (isTitleExact) tags.push('different_artist');
                         else tags.push('similar_artist');
-                        
+
                         matches.push({
                             userSong: {
                                 id: userSong.id,
@@ -4152,7 +4154,7 @@ app.post('/api/bot/query', async (req, res) => {
                         });
                     }
                 }
-                
+
                 results[gameId] = {
                     config: GAME_CONFIG[gameId],
                     matches
@@ -4166,7 +4168,7 @@ app.post('/api/bot/query', async (req, res) => {
                 };
             }
         }));
-        
+
         // 4. 计算统计
         let totalMatches = 0;
         const gameSummary = {};
@@ -4178,9 +4180,9 @@ app.post('/api/bot/query', async (req, res) => {
             };
             totalMatches = Math.max(totalMatches, data.matches.length);
         }
-        
+
         const coveragePercent = Math.round((totalMatches / userSongs.length) * 100);
-        
+
         // 5. 保存结果
         const resultId = generateShareId();
         const resultData = {
@@ -4193,14 +4195,14 @@ app.post('/api/bot/query', async (req, res) => {
             createdAt: Date.now(),
             expiresAt: Date.now() + BOT_RESULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000
         };
-        
+
         const resultPath = path.join(BOT_RESULT_DIR, `${resultId}.json`);
         fs.writeFileSync(resultPath, JSON.stringify(resultData, null, 2));
-        
+
         // 6. 生成结果页 URL
         const baseUrl = siteUrl || `http://${req.get('host').replace(':3002', ':5188')}`;
         const resultUrl = `${baseUrl}/#/result/${resultId}`;
-        
+
         // 7. 生成分享图 (如果需要)
         let imageUrl = null;
         if (generateImage) {
@@ -4211,10 +4213,10 @@ app.post('/api/bot/query', async (req, res) => {
                 console.error('[Bot] 生成图片失败:', e.message);
             }
         }
-        
+
         const duration = Date.now() - startTime;
         console.log(`[Bot] 查询完成: ${resultId} | ${userSongs.length}首 → ${totalMatches}匹配 | ${duration}ms`);
-        
+
         res.json({
             success: true,
             resultId,
@@ -4250,7 +4252,7 @@ app.post('/api/bot/query', async (req, res) => {
             expiresAt: resultData.expiresAt,
             queryTime: duration
         });
-        
+
     } catch (error) {
         console.error('[Bot] 查询失败:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -4265,18 +4267,18 @@ app.get('/api/bot/result/:id', (req, res) => {
     try {
         const { id } = req.params;
         const filePath = path.join(BOT_RESULT_DIR, `${id}.json`);
-        
+
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ success: false, error: '结果不存在或已过期' });
         }
-        
+
         const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        
+
         if (Date.now() > data.expiresAt) {
             fs.unlinkSync(filePath);
             return res.status(404).json({ success: false, error: '结果已过期' });
         }
-        
+
         res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -4291,21 +4293,21 @@ app.get('/api/bot/result/:id/image', async (req, res) => {
     try {
         const { id } = req.params;
         const imagePath = path.join(BOT_RESULT_DIR, 'images', `${id}.png`);
-        
+
         if (!fs.existsSync(imagePath)) {
             // 尝试生成
             const dataPath = path.join(BOT_RESULT_DIR, `${id}.json`);
             if (!fs.existsSync(dataPath)) {
                 return res.status(404).json({ error: '结果不存在' });
             }
-            
+
             const data = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
             const baseUrl = `http://${req.get('host').replace(':3002', ':5188')}`;
             const resultUrl = `${baseUrl}/#/result/${id}`;
-            
+
             await generateBotResultImage(id, data, resultUrl);
         }
-        
+
         if (fs.existsSync(imagePath)) {
             const imageBuffer = fs.readFileSync(imagePath);
             res.set('Content-Type', 'image/png');
@@ -4327,22 +4329,22 @@ async function generateBotResultImage(resultId, data, resultUrl) {
     if (!fs.existsSync(imagesDir)) {
         fs.mkdirSync(imagesDir, { recursive: true });
     }
-    
+
     const imagePath = path.join(imagesDir, `${resultId}.png`);
-    
+
     if (fs.existsSync(imagePath)) {
         return imagePath;
     }
-    
+
     const QRCode = require('qrcode');
-    
+
     // 生成二维码
     const qrDataUrl = await QRCode.toDataURL(resultUrl, {
         width: 200,
         margin: 1,
         color: { dark: '#1e293b', light: '#ffffff' }
     });
-    
+
     // 计算各游戏匹配数
     const gameResults = Object.entries(data.results || {})
         .map(([id, r]) => ({
@@ -4352,15 +4354,15 @@ async function generateBotResultImage(resultId, data, resultUrl) {
             color: r.config?.color || '#888'
         }))
         .sort((a, b) => b.count - a.count);
-    
+
     const maxMatches = Math.max(...gameResults.map(g => g.count), 1);
     const totalSongs = data.userSongCount || data.playlist?.trackCount || 0;
     const coveragePercent = data.coveragePercent || 0;
-    
+
     // 生成 SVG 图片
     const width = 480;
     const height = 640;
-    
+
     const gameBars = gameResults.map((g, i) => {
         const barWidth = Math.max(10, (g.count / maxMatches) * 280);
         const y = 280 + i * 44;
@@ -4370,7 +4372,7 @@ async function generateBotResultImage(resultId, data, resultUrl) {
             <text x="${145 + barWidth + 8}" y="${y + 22}" font-size="14" fill="#1e293b" font-weight="bold">${g.count}</text>
         `;
     }).join('');
-    
+
     const svg = `
         <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -4383,48 +4385,48 @@ async function generateBotResultImage(resultId, data, resultUrl) {
                     <stop offset="100%" style="stop-color:#ec4899"/>
                 </linearGradient>
             </defs>
-            
+
             <!-- Background -->
             <rect width="${width}" height="${height}" fill="url(#bg)"/>
-            
+
             <!-- Header -->
             <rect width="${width}" height="80" fill="url(#header)"/>
             <text x="24" y="35" font-size="24" fill="white" font-weight="900" font-style="italic">RHYTHMSYNC</text>
             <text x="24" y="58" font-size="13" fill="rgba(255,255,255,0.9)">音游歌单匹配结果</text>
-            
+
             <!-- Playlist Info -->
             <text x="24" y="115" font-size="18" fill="#1e293b" font-weight="bold">${escapeXml(data.playlist?.name || '歌单')}</text>
             <text x="24" y="140" font-size="13" fill="#64748b">${totalSongs} 首歌曲 · 创建者: ${escapeXml(data.playlist?.creator || '未知')}</text>
-            
+
             <!-- Stats -->
             <rect x="24" y="160" width="200" height="90" rx="12" fill="white" opacity="0.8"/>
             <text x="44" y="190" font-size="13" fill="#64748b">最高匹配</text>
             <text x="44" y="220" font-size="32" fill="#0891b2" font-weight="900">${maxMatches}</text>
             <text x="44" y="240" font-size="12" fill="#94a3b8">/ ${totalSongs} 首</text>
-            
+
             <rect x="256" y="160" width="200" height="90" rx="12" fill="white" opacity="0.8"/>
             <text x="276" y="190" font-size="13" fill="#64748b">覆盖率</text>
             <text x="276" y="220" font-size="32" fill="#ec4899" font-weight="900">${coveragePercent}%</text>
             <text x="276" y="240" font-size="12" fill="#94a3b8">音游浓度</text>
-            
+
             <!-- Game Results -->
             ${gameBars}
-            
+
             <!-- QR Code -->
             <rect x="140" y="${height - 170}" width="200" height="150" rx="12" fill="white"/>
             <image x="165" y="${height - 160}" width="150" height="110" href="${qrDataUrl}"/>
             <text x="240" y="${height - 35}" font-size="11" fill="#64748b" text-anchor="middle">扫码查看完整结果</text>
-            
+
             <!-- Footer -->
             <text x="${width - 24}" y="${height - 16}" font-size="10" fill="#94a3b8" text-anchor="end">有效期7天 · ID: ${resultId}</text>
         </svg>
     `;
-    
+
     // 转换为 PNG
     await sharp(Buffer.from(svg))
         .png()
         .toFile(imagePath);
-    
+
     console.log(`[Bot] 生成分享图: ${imagePath}`);
     return imagePath;
 }
@@ -4445,13 +4447,13 @@ function escapeXml(str) {
 // 本地访问检查中间件
 function localOnly(req, res, next) {
     const ip = getClientIp(req);
-    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || 
+    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' ||
                     ip === '::ffff:127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.');
-    
+
     if (!isLocal) {
         console.log(`[安全] 拒绝非本地访问管理 API: ${ip}`);
-        return res.status(403).json({ 
-            success: false, 
+        return res.status(403).json({
+            success: false,
             error: '管理 API 仅限本地访问',
             yourIp: ip
         });
@@ -4497,27 +4499,27 @@ app.get('/api/admin/sources', (req, res) => {
 // 切换某个游戏的数据源
 app.post('/api/admin/switch-source', (req, res) => {
     const { gameId, sourceId } = req.body;
-    
+
     if (!gameId || !sourceId) {
-        return res.status(400).json({ 
-            success: false, 
+        return res.status(400).json({
+            success: false,
             error: '缺少 gameId 或 sourceId'
         });
     }
-    
+
     const result = switchGameSource(gameId, sourceId);
-    
+
     if (result.success) {
         console.log(`[管理] 切换数据源: ${GAMES[gameId]?.shortName} -> ${result.sourceName}`);
     }
-    
+
     res.json(result);
 });
 
 // 批量切换数据源（快速预设）
 app.post('/api/admin/apply-preset', (req, res) => {
     const { preset } = req.body;
-    
+
     // 预定义的快速预设
     const QUICK_PRESETS = {
         'default': {
@@ -4548,7 +4550,7 @@ app.post('/api/admin/apply-preset', (req, res) => {
             'taiko': 'taikowiki'
         }
     };
-    
+
     if (!preset || !QUICK_PRESETS[preset]) {
         return res.status(400).json({
             success: false,
@@ -4556,7 +4558,7 @@ app.post('/api/admin/apply-preset', (req, res) => {
             availablePresets: Object.keys(QUICK_PRESETS)
         });
     }
-    
+
     const changes = [];
     for (const [gameId, sourceId] of Object.entries(QUICK_PRESETS[preset])) {
         if (activeSelections[gameId] !== sourceId && DATA_SOURCES[gameId]?.[sourceId]) {
@@ -4565,12 +4567,12 @@ app.post('/api/admin/apply-preset', (req, res) => {
             changes.push({ gameId, from: oldSource, to: sourceId });
         }
     }
-    
+
     GAME_CONFIG = buildGameConfig();
     saveActiveConfig();
-    
+
     console.log(`[管理] 应用预设: ${preset}, 变更 ${changes.length} 项`);
-    
+
     res.json({
         success: true,
         preset,
@@ -4583,21 +4585,21 @@ app.post('/api/admin/apply-preset', (req, res) => {
 app.get('/api/admin/cache-status', (req, res) => {
     try {
         const cacheFiles = [];
-        
+
         if (fs.existsSync(CACHE_DIR)) {
             const files = fs.readdirSync(CACHE_DIR);
-            
+
             for (const file of files) {
                 if (file.endsWith('.json')) {
                     const filePath = path.join(CACHE_DIR, file);
                     const stats = fs.statSync(filePath);
                     const gameId = file.replace('.json', '');
-                    
+
                     try {
                         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
                         const age = Date.now() - data.timestamp;
                         const isExpired = age > CACHE_DURATION;
-                        
+
                         cacheFiles.push({
                             gameId,
                             songCount: data.songs?.length || 0,
@@ -4616,7 +4618,7 @@ app.get('/api/admin/cache-status', (req, res) => {
                 }
             }
         }
-        
+
         res.json({ success: true, cacheFiles, cacheDir: CACHE_DIR });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -4634,7 +4636,7 @@ function formatAge(ms) {
 // 清除缓存
 app.post('/api/admin/clear-cache', (req, res) => {
     const { gameId } = req.body;
-    
+
     try {
         if (gameId) {
             // 清除指定游戏缓存
@@ -4671,8 +4673,8 @@ app.post('/api/admin/clear-cache', (req, res) => {
 // 重新加载配置
 app.post('/api/admin/reload-config', (req, res) => {
     loadActiveConfig();
-    res.json({ 
-        success: true, 
+    res.json({
+        success: true,
         message: '配置已重新加载',
         selections: activeSelections,
         config: GAME_CONFIG
@@ -4685,37 +4687,37 @@ app.get('/api/admin/recent-logs', async (req, res) => {
         const limit = Math.min(parseInt(req.query.limit) || 50, 200); // 默认50条，最多200条
         const page = parseInt(req.query.page) || 1;
         const withLocation = req.query.location !== 'false'; // 默认查询归属地
-        
+
         const logs = [];
         let allFiles = [];
-        
+
         if (fs.existsSync(LOG_DIR)) {
             allFiles = fs.readdirSync(LOG_DIR)
                 .filter(f => f.startsWith('query_') && f.endsWith('.json'))
                 .sort((a, b) => b.localeCompare(a)); // 按文件名倒序（最新的在前）
         }
-        
+
         const total = allFiles.length;
         const startIdx = (page - 1) * limit;
         const files = allFiles.slice(startIdx, startIdx + limit);
-        
+
         for (const file of files) {
             try {
                 const data = JSON.parse(fs.readFileSync(path.join(LOG_DIR, file), 'utf8'));
-                
+
                 // 查询 IP 归属地
                 if (withLocation && data.clientIp) {
                     data.location = await getIpLocation(data.clientIp);
                 }
-                
+
                 logs.push(data);
             } catch (e) {
                 // 跳过无法解析的文件
             }
         }
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             logs,
             pagination: {
                 page,
@@ -4743,47 +4745,47 @@ app.get('/api/admin/stats', async (req, res) => {
             topUids: {},      // UID 访问排行
             gameStats: {}     // 各游戏匹配统计
         };
-        
+
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const last24h = now.getTime() - 24 * 60 * 60 * 1000;
-        
+
         // 初始化最近24小时的统计
         for (let i = 0; i < 24; i++) {
             const hour = new Date(last24h + i * 60 * 60 * 1000);
             const key = `${hour.getHours().toString().padStart(2, '0')}:00`;
             stats.recentHours[key] = 0;
         }
-        
+
         if (fs.existsSync(LOG_DIR)) {
             const files = fs.readdirSync(LOG_DIR)
                 .filter(f => f.startsWith('query_') && f.endsWith('.json'));
-            
+
             for (const file of files) {
                 try {
                     const data = JSON.parse(fs.readFileSync(path.join(LOG_DIR, file), 'utf8'));
                     const logTime = new Date(data.timestamp).getTime();
-                    
+
                     stats.totalQueries++;
-                    
+
                     // 统计唯一 IP
                     if (data.clientIp) {
                         stats.uniqueIps.add(data.clientIp);
                         stats.topIps[data.clientIp] = (stats.topIps[data.clientIp] || 0) + 1;
                     }
-                    
+
                     // 统计唯一 UID
                     if (data.neteaseUid && data.neteaseUid !== 'text_import') {
                         stats.uniqueUids.add(data.neteaseUid);
                         stats.topUids[data.neteaseUid] = (stats.topUids[data.neteaseUid] || 0) + 1;
                     }
-                    
+
                     // 今日统计
                     if (logTime >= todayStart) {
                         stats.todayQueries++;
                         if (data.clientIp) stats.todayIps.add(data.clientIp);
                     }
-                    
+
                     // 最近24小时统计
                     if (logTime >= last24h) {
                         const hour = new Date(logTime);
@@ -4792,7 +4794,7 @@ app.get('/api/admin/stats', async (req, res) => {
                             stats.recentHours[key]++;
                         }
                     }
-                    
+
                     // 游戏匹配统计
                     if (data.matchResults) {
                         for (const [gameId, result] of Object.entries(data.matchResults)) {
@@ -4808,12 +4810,12 @@ app.get('/api/admin/stats', async (req, res) => {
                 }
             }
         }
-        
+
         // 获取 Top IP 的归属地
         const topIpsList = Object.entries(stats.topIps)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10);
-        
+
         const topIpsWithLocation = [];
         for (const [ip, count] of topIpsList) {
             const location = await getIpLocation(ip);
@@ -4824,7 +4826,7 @@ app.get('/api/admin/stats', async (req, res) => {
                 isp: location.isp
             });
         }
-        
+
         res.json({
             success: true,
             stats: {
@@ -4861,11 +4863,11 @@ app.get('/api/admin/ip-location/:ip', async (req, res) => {
 app.post('/api/admin/prefetch', async (req, res) => {
     const { gameIds } = req.body;
     const targetGames = gameIds || Object.keys(GAME_CONFIG);
-    
+
     console.log(`[管理] 开始预取数据: ${targetGames.join(', ')}`);
-    
+
     const results = {};
-    
+
     for (const gameId of targetGames) {
         try {
             const songs = await fetchGameSongs(gameId);
@@ -4874,7 +4876,7 @@ app.post('/api/admin/prefetch', async (req, res) => {
             results[gameId] = { success: false, error: error.message };
         }
     }
-    
+
     res.json({ success: true, results });
 });
 
@@ -4901,14 +4903,14 @@ function generateShareId() {
 function cleanupExpiredShares() {
     const now = Date.now();
     const expiryMs = SHARE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-    
+
     try {
         const files = fs.readdirSync(SHARE_DATA_DIR);
         let cleaned = 0;
-        
+
         for (const file of files) {
             if (!file.endsWith('.json')) continue;
-            
+
             const filePath = path.join(SHARE_DATA_DIR, file);
             try {
                 const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -4922,7 +4924,7 @@ function cleanupExpiredShares() {
                 cleaned++;
             }
         }
-        
+
         if (cleaned > 0) {
             console.log(`[分享] 清理了 ${cleaned} 个过期分享`);
         }
@@ -4948,7 +4950,7 @@ const AI_RATE_LIMIT = {
 function checkAIRateLimit(ip) {
     const now = Date.now();
     const record = AI_RATE_LIMIT.requests.get(ip);
-    
+
     if (!record || now > record.resetTime) {
         // 新窗口
         AI_RATE_LIMIT.requests.set(ip, {
@@ -4957,12 +4959,12 @@ function checkAIRateLimit(ip) {
         });
         return { allowed: true, remaining: AI_RATE_LIMIT.maxRequests - 1 };
     }
-    
+
     if (record.count >= AI_RATE_LIMIT.maxRequests) {
         const waitSeconds = Math.ceil((record.resetTime - now) / 1000);
         return { allowed: false, remaining: 0, waitSeconds };
     }
-    
+
     record.count++;
     return { allowed: true, remaining: AI_RATE_LIMIT.maxRequests - record.count };
 }
@@ -5000,17 +5002,17 @@ async function generateAIComment(playlistName, trackCount, coveragePercent, game
     const level = getConcentrationLevel(coveragePercent);
     const levelNames = {
         legendary: '传说级',
-        master: '大师级', 
+        master: '大师级',
         expert: '专家级',
         advanced: '进阶级',
         beginner: '入门级'
     };
-    
+
     // 构建游戏匹配详情
-    const gameDetails = topGames && topGames.length > 0 
+    const gameDetails = topGames && topGames.length > 0
         ? topGames.filter(g => g.count > 0).map(g => `${g.name}: ${g.count}首`).join('、')
         : gameSummary;
-    
+
     // 构建歌曲列表（最多展示10首）
     const songListText = matchedSongs && matchedSongs.length > 0
         ? `\n- 部分匹配歌曲：${matchedSongs.slice(0, 10).join('、')}${matchedSongs.length > 10 ? '等' : ''}`
@@ -5090,7 +5092,7 @@ async function generateAIComment(playlistName, trackCount, coveragePercent, game
                 };
             }
         }
-        
+
         return {
             comment: FALLBACK_COMMENTS[level],
             title: levelNames[level],
@@ -5113,7 +5115,7 @@ async function generateAIComment(playlistName, trackCount, coveragePercent, game
 // AI 锐评 API 端点（带速率限制）
 app.post('/api/ai/comment', async (req, res) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-    
+
     // 检查速率限制
     const rateCheck = checkAIRateLimit(clientIp);
     if (!rateCheck.allowed) {
@@ -5124,17 +5126,17 @@ app.post('/api/ai/comment', async (req, res) => {
             retryAfter: rateCheck.waitSeconds
         });
     }
-    
+
     try {
         const { playlistName, trackCount, coveragePercent, gameSummary, topGames, matchedSongs } = req.body;
-        
+
         console.log(`[AI 锐评] 生成中... 歌单: ${playlistName}, 浓度: ${coveragePercent}%, 歌曲数: ${matchedSongs?.length || 0}`);
-        
+
         const aiResult = await generateAIComment(playlistName, trackCount, coveragePercent, gameSummary, topGames, matchedSongs);
         const level = getConcentrationLevel(coveragePercent);
-        
+
         console.log(`[AI 锐评] 生成成功:`, aiResult);
-        
+
         res.json({
             success: true,
             comment: aiResult.comment,
@@ -5182,23 +5184,23 @@ async function embedVisualWatermark(imagePath, watermarkInfo) {
         const image = sharp(imagePath);
         const metadata = await image.metadata();
         const { width, height } = metadata;
-        
+
         // 水印内容 - 多行显示更多信息
         const { shareId, playlist, coverage, created, totalMatches } = watermarkInfo;
         const line1 = `RHYTHMSYNC · ID: ${shareId}`;
         const line2 = `${playlist} · ${coverage}% · ${totalMatches}曲`;
         const line3 = `Generated: ${created}`;
-        
+
         const fontSize = Math.max(10, Math.floor(width / 40));
         const lineHeight = fontSize * 1.4;
         const bottomPadding = 15;
-        
+
         // 底部居中的水印 SVG
         const watermarkSvg = `
             <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
                 <style>
-                    text { 
-                        font-family: 'Consolas', 'Monaco', monospace; 
+                    text {
+                        font-family: 'Consolas', 'Monaco', monospace;
                         font-weight: normal;
                         text-anchor: middle;
                     }
@@ -5208,7 +5210,7 @@ async function embedVisualWatermark(imagePath, watermarkInfo) {
                 <text x="${width / 2}" y="${height - bottomPadding}" font-size="${fontSize - 1}" fill="rgba(128,128,128,0.015)">${line3}</text>
             </svg>
         `;
-        
+
         // 将水印叠加到图片上
         await sharp(imagePath)
             .composite([{
@@ -5219,10 +5221,10 @@ async function embedVisualWatermark(imagePath, watermarkInfo) {
             }])
             .png()
             .toFile(imagePath + '.tmp');
-        
+
         // 替换原文件
         fs.renameSync(imagePath + '.tmp', imagePath);
-        
+
         console.log(`[水印] 视觉水印嵌入成功: ${shareId}`);
     } catch (error) {
         console.error('[水印] 嵌入失败:', error.message);
@@ -5232,47 +5234,47 @@ async function embedVisualWatermark(imagePath, watermarkInfo) {
 // 生成分享图片
 async function generateShareImage(shareId) {
     const imagePath = path.join(SHARE_IMAGES_DIR, `${shareId}.png`);
-    
+
     // 如果图片已存在，直接返回
     if (fs.existsSync(imagePath)) {
         return imagePath;
     }
-    
+
     // 读取分享数据用于水印
     const shareDataPath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
     let shareData = null;
     if (fs.existsSync(shareDataPath)) {
         shareData = JSON.parse(fs.readFileSync(shareDataPath, 'utf-8'));
     }
-    
+
     const browser = await getBrowser();
     const page = await browser.newPage();
-    
+
     try {
         // 设置视口大小 (根据设计稿调整)
         await page.setViewport({ width: 480, height: 800, deviceScaleFactor: 2 });
-        
+
         // 访问分享页面的渲染模式 (需要前端支持 /#/share/:id?render=true 路由，仅显示卡片)
         const renderUrl = `http://localhost:5188/#/share/${shareId}?render=true`;
         console.log(`[分享图] 正在渲染: ${renderUrl}`);
-        
+
         await page.goto(renderUrl, { waitUntil: 'networkidle0', timeout: 30000 });
-        
+
         // 等待内容加载完成 (可以通过等待特定选择器)
         const selector = '[data-share-card]';
         await page.waitForSelector(selector, { timeout: 10000 });
-        
+
         // 获取元素并截图
         const element = await page.$(selector);
         if (!element) throw new Error('找不到分享卡片元素');
-        
+
         await element.screenshot({
             path: imagePath,
             omitBackground: true
         });
-        
+
         console.log(`[分享图] 生成成功: ${imagePath}`);
-        
+
         // 嵌入视觉隐水印（极淡，调整对比度后可见）
         if (shareData) {
             // 计算总匹配数
@@ -5282,7 +5284,7 @@ async function generateShareImage(shareId) {
                     totalMatches += gameData.totalMatches || gameData.matches?.length || 0;
                 }
             }
-            
+
             const watermarkInfo = {
                 shareId,
                 playlist: shareData.playlist?.name || 'Unknown',
@@ -5292,7 +5294,7 @@ async function generateShareImage(shareId) {
             };
             await embedVisualWatermark(imagePath, watermarkInfo);
         }
-        
+
         return imagePath;
     } catch (error) {
         console.error('[分享图] 生成失败:', error);
@@ -5306,23 +5308,23 @@ async function generateShareImage(shareId) {
 // 获取分享图片
 app.get('/api/share/:id/image', async (req, res) => {
     const { id } = req.params;
-    
+
     // 检查分享是否存在
     const sharePath = path.join(SHARE_DATA_DIR, `${id}.json`);
     if (!fs.existsSync(sharePath)) {
         return res.status(404).json({ error: '分享不存在' });
     }
-    
+
     try {
         const imagePath = await generateShareImage(id);
-        
+
         // 确保文件存在
         if (!fs.existsSync(imagePath)) {
             throw new Error('图片文件未生成');
         }
-        
+
         console.log(`[分享图] 发送文件: ${imagePath}`);
-        
+
         // 直接读取并发送文件
         const imageBuffer = fs.readFileSync(imagePath);
         res.set('Content-Type', 'image/png');
@@ -5338,11 +5340,11 @@ app.get('/api/share/:id/image', async (req, res) => {
 app.post('/api/share/create', (req, res) => {
     try {
         const { playlist, results, aiComment, coveragePercent, aiTitle, aiSongs, shareUrlBase } = req.body;
-        
+
         if (!playlist || !results) {
             return res.status(400).json({ success: false, error: '缺少必要数据' });
         }
-        
+
         const shareId = generateShareId();
         const shareData = {
             id: shareId,
@@ -5376,12 +5378,12 @@ app.post('/api/share/create', (req, res) => {
             createdAt: Date.now(),
             expiresAt: Date.now() + SHARE_EXPIRY_DAYS * 24 * 60 * 60 * 1000
         };
-        
+
         const filePath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
         fs.writeFileSync(filePath, JSON.stringify(shareData, null, 2));
-        
+
         console.log(`[分享] 创建成功: ${shareId}`);
-        
+
         res.json({
             success: true,
             shareId,
@@ -5398,19 +5400,19 @@ app.get('/api/share/:shareId', (req, res) => {
     try {
         const { shareId } = req.params;
         const filePath = path.join(SHARE_DATA_DIR, `${shareId}.json`);
-        
+
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ success: false, error: 'expired', message: '分享已过期或不存在' });
         }
-        
+
         const shareData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        
+
         // 检查是否过期
         if (Date.now() > shareData.expiresAt) {
             fs.unlinkSync(filePath);
             return res.status(404).json({ success: false, error: 'expired', message: '分享已过期' });
         }
-        
+
         res.json({
             success: true,
             data: shareData
