@@ -1,4 +1,4 @@
-## 2026-04-20 - Global Path Traversal Protection
-**Vulnerability:** Multiple API endpoints (`/api/covers/:gameId/:fileName`, `/api/bot/result/:id`, `/api/random/image/:id`, etc.) use user input directly in `path.join` without path traversal validation.
-**Learning:** `req.params` parameters must be validated to prevent directory traversal (`..`, `/`, `\`) before being used in file system operations.
-**Prevention:** Implement a global `isSafeFilename` middleware using `app.param()` to automatically reject any unsafe paths across all endpoints.
+## 2026-06-02 - Sentinel SSRF Fix on Proxy Endpoint
+**Vulnerability:** The application had an SSRF (Server-Side Request Forgery) vulnerability in the `/api/covers/:gameId/:fileName` proxy endpoint where it fetches the image provided in the `url` query parameter unconditionally, and follows redirects automatically. Additionally, if the request failed, it redirected the user to the provided `url`, which served as an Open Redirect.
+**Learning:** In Node.js applications using `axios`, to fully mitigate TOCTOU DNS rebinding, URL string checks are not enough. It's required to pass custom `httpAgent` and `httpsAgent` configurations to perform dynamic `dns.promises.lookup` and validation before making the actual request. Error handlers in proxy endpoints should fail securely instead of transparently redirecting users to unvalidated URLs.
+**Prevention:** Implement `safeHttpAgent` and `safeHttpsAgent` with a custom `dns.lookup` that validates the resolved IP. Enforce `maxRedirects: 0` for safe fetching. Ensure all catch blocks return 4xx/5xx status codes instead of `res.redirect()` for unvalidated external parameters.
