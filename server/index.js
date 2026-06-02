@@ -1,4 +1,8 @@
 const express = require('express');
+const dns = require('dns');
+const http = require('http');
+const https = require('https');
+
 const cors = require('cors');
 const axios = require('axios');
 const fuzzysort = require('fuzzysort');
@@ -17,6 +21,52 @@ const {
     song_chorus,
     cloudsearch
 } = require('NeteaseCloudMusicApi');
+
+
+// ================== SSRF 防御 ==================
+function isInternalIp(ip) {
+    if (!ip) return false;
+    ip = ip.replace(/^::ffff:/, '');
+    if (ip === '0.0.0.0' || ip === '::' || ip === '::1') return true;
+    if (ip.startsWith('127.') || ip.startsWith('169.254.') || ip.startsWith('10.') || ip.startsWith('192.168.')) return true;
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return true;
+    if (ip.startsWith('fc00:') || ip.startsWith('fd00:') || ip.startsWith('fe80:')) return true;
+    return false;
+}
+
+function isSafeUrl(urlStr) {
+    if (!urlStr) return false;
+    try {
+        const u = new URL(urlStr);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+        if (isInternalIp(u.hostname) || u.hostname === 'localhost') return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, address, family);
+        const isBlocked = Array.isArray(address)
+            ? address.some(a => isInternalIp(a.address || a))
+            : isInternalIp(address);
+        if (isBlocked) {
+            return callback(new Error('SSRF Blocked: Attempted to access internal IP'), null, null);
+        }
+        callback(err, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+// ==============================================
 
 // ============== 安全过滤函数 ==============
 function sanitizeInput(input) {
@@ -1666,9 +1716,13 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
+            if (!isSafeUrl(originalUrl)) throw new Error('Invalid URL');
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
+                maxRedirects: 0,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1763,8 +1817,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     
     // 从查询参数获取原始 URL
     const originalUrl = req.query.url;
-    if (!originalUrl) {
-        return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
+    if (!originalUrl || !isSafeUrl(originalUrl)) {
+        return res.status(404).json({ error: '封面未找到，或未提供合法的原始 URL' });
     }
     
     // 按需下载
@@ -1781,6 +1835,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
+            maxRedirects: 0,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1799,7 +1856,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
         // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 为了防止开放重定向和潜在的 SSRF，返回 404 而不是重定向
+        res.status(404).send('封面下载失败');
     }
 });
 
