@@ -6,6 +6,9 @@ const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
 const {
@@ -19,6 +22,101 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    if (!ip) return false;
+
+    // 规范化 IPv4 映射的 IPv6 地址 (例如 ::ffff:127.0.0.1)
+    let cleanIp = ip;
+    if (cleanIp.startsWith('::ffff:')) {
+        cleanIp = cleanIp.substring(7);
+    }
+
+    // IPv4 检查
+    if (cleanIp.includes('.')) {
+        const parts = cleanIp.split('.');
+        if (parts.length !== 4) return false;
+
+        const numParts = parts.map(Number);
+
+        // 0.0.0.0/8 (This network)
+        if (numParts[0] === 0) return true;
+        // 10.0.0.0/8 (Private network)
+        if (numParts[0] === 10) return true;
+        // 127.0.0.0/8 (Loopback)
+        if (numParts[0] === 127) return true;
+        // 169.254.0.0/16 (Link-local, Cloud metadata)
+        if (numParts[0] === 169 && numParts[1] === 254) return true;
+        // 172.16.0.0/12 (Private network)
+        if (numParts[0] === 172 && numParts[1] >= 16 && numParts[1] <= 31) return true;
+        // 192.168.0.0/16 (Private network)
+        if (numParts[0] === 192 && numParts[1] === 168) return true;
+
+        return false;
+    }
+
+    // IPv6 检查
+    if (cleanIp.includes(':')) {
+        // Unspecified address (::)
+        if (cleanIp === '::' || cleanIp === '0:0:0:0:0:0:0:0') return true;
+        // Loopback address (::1)
+        if (cleanIp === '::1' || cleanIp === '0:0:0:0:0:0:0:1') return true;
+
+        const lowerIp = cleanIp.toLowerCase();
+
+        // Unique Local Addresses (fc00::/7)
+        if (lowerIp.startsWith('fc') || lowerIp.startsWith('fd')) return true;
+
+        // Link-Local Addresses (fe80::/10)
+        if (lowerIp.startsWith('fe8') || lowerIp.startsWith('fe9') ||
+            lowerIp.startsWith('fea') || lowerIp.startsWith('feb')) return true;
+    }
+
+    return false;
+}
+
+// 安全 DNS 解析：防止 SSRF (DNS 重绑定攻击 TOCTOU)
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, address, family);
+
+        // 检查解析出的所有 IP 地址是否安全
+        const isUnsafe = Array.isArray(address)
+            ? address.some(a => isInternalIp(a.address || a))
+            : isInternalIp(address);
+
+        if (isUnsafe) {
+            return callback(new Error(`SSRF Prevention: Resolved to internal IP address (${hostname} -> ${JSON.stringify(address)})`), null, null);
+        }
+
+        callback(null, address, family);
+    });
+}
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlStr) {
+    if (!urlStr) return false;
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+
+        // Hostname validation (basic IP check)
+        // Note: For true SSRF prevention, DNS resolution is required.
+        // This is handled via custom agents for Axios.
+        return !isInternalIp(parsed.hostname);
+    } catch {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1650,6 +1748,12 @@ function isCoverCached(gameId, originalUrl) {
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
     
+    // 安全校验原始 URL (SSRF 防御)
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[封面] 非法 URL 拒绝下载: ${originalUrl}`);
+        return null;
+    }
+
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
     
@@ -1669,6 +1773,9 @@ async function downloadAndCacheCover(gameId, originalUrl) {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
+                maxRedirects: 0,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1767,6 +1874,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    // 安全校验原始 URL (SSRF 防御)
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(400).json({ error: '非法的封面 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1781,6 +1893,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
+            maxRedirects: 0, // 拦截可能指向内网的 302 重定向
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1798,8 +1913,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 下载失败时返回错误状态，不再重定向到可能恶意的原始 URL (修复开放重定向/SSRF绕过)
+        res.status(500).json({ error: '封面下载失败' });
     }
 });
 
