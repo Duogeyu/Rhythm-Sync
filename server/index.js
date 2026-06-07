@@ -18,7 +18,90 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+
+const dns = require('dns');
+const net = require('net');
+
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    if (!ip) return false;
+
+    // Check for IPv4 mapped to IPv6
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.substring(7);
+    }
+
+    if (!net.isIP(ip)) return false;
+
+    if (net.isIPv4(ip)) {
+        if (ip === '0.0.0.0' || ip === '255.255.255.255') return true;
+        const parts = ip.split('.').map(Number);
+
+        // 10.0.0.0/8
+        if (parts[0] === 10) return true;
+        // 172.16.0.0/12
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        // 192.168.0.0/16
+        if (parts[0] === 192 && parts[1] === 168) return true;
+        // 127.0.0.0/8
+        if (parts[0] === 127) return true;
+        // 169.254.0.0/16
+        if (parts[0] === 169 && parts[1] === 254) return true;
+    } else {
+        // IPv6 loopback
+        if (ip === '::1') return true;
+        // IPv6 unspecified
+        if (ip === '::') return true;
+
+        // IPv6 Unique Local Address (fc00::/7)
+        if (ip.startsWith('fc') || ip.startsWith('fd')) return true;
+        // IPv6 Link-Local (fe80::/10)
+        if (ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb')) return true;
+    }
+
+    return false;
+}
+
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, address, family);
+
+        let addrs = Array.isArray(address) ? address : [{ address, family }];
+
+        for (let a of addrs) {
+            if (isInternalIp(a.address || a)) {
+                return callback(new Error('SSRF Attempt Blocked: Resolves to internal IP: ' + (a.address || a)), null, null);
+            }
+        }
+
+        callback(null, address, family);
+    });
+}
+
+const safeHttpAgent = new require('http').Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new require('https').Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlString) {
+    if (!urlString) return false;
+    try {
+        const url = new URL(urlString);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+
+        if (net.isIP(url.hostname) && isInternalIp(url.hostname)) {
+            return false;
+        }
+
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1666,7 +1749,9 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
+            if (!isSafeUrl(originalUrl)) { throw new Error("Invalid or blocked URL"); }
             const response = await axios.get(originalUrl, {
+                httpAgent: safeHttpAgent, httpsAgent: safeHttpsAgent,
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
                 headers: {
@@ -1766,6 +1851,10 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝访问被封禁的封面 URL: ${originalUrl}`);
+        return res.status(403).json({ error: '非法的图片请求地址' });
+    }
     
     // 按需下载
     try {
@@ -1778,7 +1867,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         }
         
         // 下载封面
+        if (!isSafeUrl(originalUrl)) { throw new Error("Invalid or blocked URL"); }
         const response = await axios.get(originalUrl, {
+            httpAgent: safeHttpAgent, httpsAgent: safeHttpsAgent,
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
             headers: {
