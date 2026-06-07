@@ -1,3 +1,7 @@
 ## 2023-10-27 - [Optimize Levenshtein Distance Calculation]
 **Learning:** In the Node.js backend, synchronous string matching algorithms like `levenshteinDistance` run single-threaded and block the event loop. The original implementation used a 2D matrix (`const matrix = []`), resulting in $O(N \times M)$ memory allocations and massive Garbage Collection (GC) overhead during bulk matching tasks.
 **Action:** Always optimize dynamic programming matrix calculations in high-frequency Node.js loops by using an $O(N)$ 1D array approach combined with a globally shared `Uint16Array` buffer for standard lengths. Include a dynamic allocation fallback for inputs that exceed the buffer's maximum length.
+
+## 2025-02-14 - [Optimize Jaccard Similarity Bigram Generation]
+**Learning:** In the Node.js backend, calculating string similarity using Jaccard similarity requires generating sets of bigrams. A naive implementation using `s.substring(i, i + 2)` generates a massive number of temporary string objects in memory, which triggers significant Garbage Collection (GC) overhead during bulk operations.
+**Action:** Always optimize character subset generation in Node.js hot loops by using bitwise packing instead of substring slice allocation. Pack adjacent string character codes using `(s.charCodeAt(i) << 16) | s.charCodeAt(i + 1)` which uses significantly less memory as it outputs simple Numbers, avoiding temporary string GC overhead.
