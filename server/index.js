@@ -8,6 +8,10 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
 const {
     user_playlist,
     playlist_detail,
@@ -19,6 +23,59 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    if (!ip || typeof ip !== 'string') return true;
+    if (ip.startsWith('[') && ip.endsWith(']')) {
+        ip = ip.substring(1, ip.length - 1);
+    }
+    if (ip.startsWith('::ffff:')) ip = ip.substring(7);
+    if (ip === '::' || ip === '::1') return true;
+    if (ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb')) return true;
+    const parts = ip.split('.');
+    if (parts.length !== 4) return false;
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
+    if (p0 === 0 || p0 === 127 || p0 === 10) return true;
+    if (p0 === 172 && p1 >= 16 && p1 <= 31) return true;
+    if (p0 === 192 && p1 === 168) return true;
+    if (p0 === 169 && p1 === 254) return true;
+    return false;
+}
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, address, family);
+        let isInternal = Array.isArray(address) ? address.some(a => isInternalIp(a.address || a)) : isInternalIp(address);
+        if (isInternal) return callback(new Error('DNS lookup resolved to an internal IP address (SSRF blocked)'), null, null);
+        callback(null, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlString) {
+    if (!urlString || typeof urlString !== 'string') return false;
+    try {
+        const parsed = new URL(urlString);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+
+        let hostname = parsed.hostname;
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+            hostname = hostname.substring(1, hostname.length - 1);
+        }
+
+        if (net.isIP(hostname) && isInternalIp(hostname)) return false;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1649,6 +1706,10 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝下载不安全的封面 URL: ${originalUrl}`);
+        return null;
+    }
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1669,6 +1730,9 @@ async function downloadAndCacheCover(gameId, originalUrl) {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                maxRedirects: 0,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1767,6 +1831,10 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(400).json({ error: '不安全的封面 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1781,6 +1849,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            maxRedirects: 0,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
