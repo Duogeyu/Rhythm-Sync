@@ -8,6 +8,10 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
 const {
     user_playlist,
     playlist_detail,
@@ -19,6 +23,63 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// 防范 SSRF
+function isInternalIp(ipStr) {
+    if (typeof ipStr !== 'string') return false;
+    let ip = ipStr;
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.slice(7);
+    }
+    if (ip === '0.0.0.0') return true;
+    if (net.isIPv4(ip)) {
+        const parts = ip.split('.').map(p => parseInt(p, 10));
+        if (parts[0] === 127) return true;
+        if (parts[0] === 10) return true;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        if (parts[0] === 192 && parts[1] === 168) return true;
+        if (parts[0] === 169 && parts[1] === 254) return true;
+    } else if (net.isIPv6(ip)) {
+        if (ip === '::1' || ip === '::') return true;
+        const normalized = ip.toLowerCase();
+        if (normalized.startsWith('fc00:') || normalized.startsWith('fd00:') || normalized.startsWith('fe80:')) return true;
+    }
+    return false;
+}
+
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, address, family);
+        const addrs = Array.isArray(address) ? address : [{address}];
+        const isInternal = addrs.some(a => isInternalIp(a.address || a));
+        if (isInternal) {
+            return callback(new Error(`[SSRF Protection] Resolved IP resolves to internal address for hostname ${hostname}`));
+        }
+        callback(null, address, family);
+    });
+}
+
+function isSafeUrl(urlStr) {
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+        let hostname = parsed.hostname;
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+            hostname = hostname.slice(1, -1);
+        }
+        if (net.isIP(hostname) && isInternalIp(hostname)) return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1664,6 +1725,11 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     }
     
     // 下载封面
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[封面] 拦截到不安全的URL: ${originalUrl}`);
+        return null;
+    }
+
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
             const response = await axios.get(originalUrl, {
@@ -1672,7 +1738,9 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
-                }
+                },
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent
             });
             
             fs.writeFileSync(localPath, response.data);
@@ -1768,6 +1836,10 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     }
     
     // 按需下载
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(403).json({ error: '不安全的封面 URL' });
+    }
+
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
         
@@ -1783,7 +1855,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+            },
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent
         });
         
         // 保存到本地
