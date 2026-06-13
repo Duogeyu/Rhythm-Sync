@@ -1,6 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
 const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
@@ -19,6 +23,82 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// SSRF 防护：校验 IP 和 URL
+function isInternalIp(ip) {
+    if (!ip) return false;
+
+    // Strip IPv4-mapped IPv6 prefix
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.substring(7);
+    }
+
+    // Strip brackets for IPv6
+    ip = ip.replace(/^[|]$/g, '');
+
+    // Check for 0.0.0.0
+    if (ip === '0.0.0.0' || ip === '::') return true;
+
+    // Check loopback (127.0.0.0/8, ::1)
+    if (ip.startsWith('127.') || ip === '::1') return true;
+
+    // Check private IPv4
+    if (ip.startsWith('10.')) return true;
+    if (ip.startsWith('192.168.')) return true;
+    if (ip.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) return true;
+
+    // Check cloud metadata
+    if (ip.startsWith('169.254.')) return true;
+
+    // Check IPv6 unique local (fc00::/7) and link local (fe80::/10)
+    if (ip.match(/^[fF][cCdD][0-9a-fA-F]{2}:/)) return true;
+    if (ip.match(/^[fF][eE][89aAbB][0-9a-fA-F]:/)) return true;
+
+    return false;
+}
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+
+        const isInternal = Array.isArray(address)
+            ? address.some(a => isInternalIp(a.address || a))
+            : isInternalIp(address);
+
+        if (isInternal) {
+            return callback(new Error(`DNS resolution to internal IP blocked: ${hostname}`));
+        }
+
+        callback(null, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlStr) {
+    try {
+        const parsed = new URL(urlStr);
+        if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+
+        // Block direct IP bypass
+        let hostname = parsed.hostname;
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+            hostname = hostname.slice(1, -1);
+        }
+        if (net.isIP(hostname)) {
+            if (isInternalIp(hostname)) return false;
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1666,7 +1746,10 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
+            if (!isSafeUrl(originalUrl)) throw new Error('Unsafe URL');
             const response = await axios.get(originalUrl, {
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
                 headers: {
@@ -1778,7 +1861,10 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         }
         
         // 下载封面
+        if (!isSafeUrl(originalUrl)) throw new Error('Unsafe URL');
         const response = await axios.get(originalUrl, {
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
             headers: {
