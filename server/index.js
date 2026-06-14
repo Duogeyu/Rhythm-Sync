@@ -5,6 +5,10 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -19,6 +23,79 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// SSRF 保护配置
+function isInternalIp(ip) {
+    // 移除 IPv4 映射的 IPv6 前缀，防止绕过
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.substring(7);
+    }
+
+    // 0.0.0.0 和本地环回
+    if (ip === '0.0.0.0' || ip === '127.0.0.1' || ip.startsWith('127.')) return true;
+
+    // 私有 IPv4 地址
+    if (ip.startsWith('10.')) return true;
+    if (ip.startsWith('192.168.')) return true;
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return true;
+
+    // 云元数据服务 IP
+    if (ip.startsWith('169.254.')) return true;
+
+    // IPv6 本地和私有地址
+    if (ip === '::1' || ip === '::' || ip.startsWith('fc00:') || ip.startsWith('fd00:') || ip.startsWith('fe80:')) return true;
+
+    return false;
+}
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+
+        // dns.lookup 可能会返回数组 (当 options.all 为 true 时)
+        const isInternal = Array.isArray(address)
+            ? address.some(a => isInternalIp(a.address || a))
+            : isInternalIp(address);
+
+        if (isInternal) {
+            return callback(new Error(`SSRF Blocked: Resolves to internal IP`));
+        }
+
+        callback(null, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlStr) {
+    if (!urlStr) return false;
+    try {
+        const parsed = new URL(urlStr);
+        // 只允许 http 和 https 协议
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+
+        // 如果主机名本身就是 IP，直接检查，防止绕过 lookup
+        if (net.isIP(parsed.hostname)) {
+            // URL 解析器可能保留 IPv6 的括号，需要去掉
+            const rawIp = parsed.hostname.replace(/^\[/, '').replace(/\]$/, '');
+            if (isInternalIp(rawIp)) {
+                return false;
+            }
+        }
+
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1649,6 +1726,10 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝下载不安全的封面 URL: ${originalUrl}`);
+        return null;
+    }
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1672,7 +1753,9 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
-                }
+                },
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent
             });
             
             fs.writeFileSync(localPath, response.data);
@@ -1766,6 +1849,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(403).json({ error: '不安全的原始 URL' });
+    }
     
     // 按需下载
     try {
@@ -1783,7 +1869,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+            },
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent
         });
         
         // 保存到本地
@@ -1798,8 +1886,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        res.status(502).json({ error: '封面下载失败' });
     }
 });
 
