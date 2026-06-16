@@ -7,6 +7,10 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
 const QRCode = require('qrcode');
 const {
     user_playlist,
@@ -19,6 +23,98 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    if (!ip) return true;
+
+    // Strip IPv4-mapped IPv6 prefix
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.substring(7);
+    }
+
+    // Check IPv4
+    if (net.isIPv4(ip)) {
+        const parts = ip.split('.').map(Number);
+
+        // 0.0.0.0/8
+        if (parts[0] === 0) return true;
+        // 127.0.0.0/8 Loopback
+        if (parts[0] === 127) return true;
+        // 10.0.0.0/8 Private
+        if (parts[0] === 10) return true;
+        // 172.16.0.0/12 Private
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        // 192.168.0.0/16 Private
+        if (parts[0] === 192 && parts[1] === 168) return true;
+        // 169.254.0.0/16 Link-local
+        if (parts[0] === 169 && parts[1] === 254) return true;
+
+        return false;
+    }
+
+    // Check IPv6
+    if (net.isIPv6(ip)) {
+        const lowerIp = ip.toLowerCase();
+        // Unspecified
+        if (lowerIp === '::') return true;
+        // Loopback
+        if (lowerIp === '::1') return true;
+        // Unique Local Address (fc00::/7)
+        if (lowerIp.startsWith('fc') || lowerIp.startsWith('fd')) return true;
+        // Link-local
+        if (lowerIp.startsWith('fe80:')) return true;
+
+        return false;
+    }
+
+    return true; // If not valid IPv4/IPv6, consider unsafe
+}
+
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+
+        const checkAddress = Array.isArray(address) ? address.some(a => isInternalIp(a.address || a)) : isInternalIp(address);
+
+        if (checkAddress) {
+            return callback(new Error(`Host resolves to internal IP: ${hostname}`));
+        }
+
+        callback(null, address, family);
+    });
+}
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlString) {
+    try {
+        const parsed = new URL(urlString);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+
+        let hostname = parsed.hostname;
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+            hostname = hostname.slice(1, -1);
+        }
+
+        if (net.isIP(hostname)) {
+            if (isInternalIp(hostname)) {
+                return false;
+            }
+        }
+
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1650,6 +1746,11 @@ function isCoverCached(gameId, originalUrl) {
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
     
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝下载不安全的封面 URL: ${originalUrl}`);
+        return null;
+    }
+
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
     
@@ -1669,6 +1770,8 @@ async function downloadAndCacheCover(gameId, originalUrl) {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1766,6 +1869,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝代理不安全的封面 URL: ${originalUrl}`);
+        return res.status(400).json({ error: '不安全的封面 URL' });
+    }
     
     // 按需下载
     try {
@@ -1781,6 +1889,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1798,8 +1908,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 下载失败时返回错误，防止 Open Redirect
+        res.status(500).json({ error: '封面下载失败' });
     }
 });
 
