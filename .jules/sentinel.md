@@ -1,4 +1,4 @@
-## 2026-04-20 - Global Path Traversal Protection
-**Vulnerability:** Multiple API endpoints (`/api/covers/:gameId/:fileName`, `/api/bot/result/:id`, `/api/random/image/:id`, etc.) use user input directly in `path.join` without path traversal validation.
-**Learning:** `req.params` parameters must be validated to prevent directory traversal (`..`, `/`, `\`) before being used in file system operations.
-**Prevention:** Implement a global `isSafeFilename` middleware using `app.param()` to automatically reject any unsafe paths across all endpoints.
+## 2026-06-18 - SSRF vulnerability via unvalidated URLs in Cover Cache Endpoints
+**Vulnerability:** The endpoints \`downloadAndCacheCover\` and \`/api/covers/:gameId/:fileName\` fetched user-controlled URLs directly using \`axios.get\` without resolving and validating IP addresses, allowing for Server-Side Request Forgery (SSRF) and potential Open Redirect via the fallback error redirect.
+**Learning:** External URL fetching must be constrained using custom HTTP/HTTPS agents that hook \`dns.lookup\` to block requests to loopback, link-local, and other private IP addresses (including IPv6 bypasses). Error handling that falls back to redirecting the client must also validate the target URL.
+**Prevention:** Apply custom \`isSafeUrl\` checks, \`httpAgent\`/\`httpsAgent\` configuration with a secure DNS lookup implementation, and validate fallback redirect URLs.
