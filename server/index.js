@@ -18,7 +18,121 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
+
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    if (!ip) return false;
+
+    let normalizedIp = ip;
+    // Remove IPv6 brackets if present
+    if (normalizedIp.startsWith('[') && normalizedIp.endsWith(']')) {
+        normalizedIp = normalizedIp.slice(1, -1);
+    }
+
+    // Convert IPv4-mapped IPv6 address to IPv4
+    if (normalizedIp.startsWith('::ffff:')) {
+        normalizedIp = normalizedIp.substring(7);
+    }
+
+    // Block common IPv6 representations of loopback and unspecified
+    const ipLower = normalizedIp.toLowerCase();
+    if (ipLower === '::1' || ipLower === '::' || ipLower === '0:0:0:0:0:0:0:1' || ipLower === '::0' || ipLower.match(/^0{1,4}(:0{1,4}){7}$/)) return true;
+
+    // Check link-local IPv6
+    if (ipLower.startsWith('fe80:')) return true;
+
+    // Check Unique Local Addresses (ULA) IPv6
+    if (ipLower.startsWith('fc') || ipLower.startsWith('fd')) {
+        const firstHex = parseInt(ipLower.substring(0, 2), 16);
+        if (firstHex >= 0xfc && firstHex <= 0xfd) return true;
+    }
+
+    if (!net.isIPv4(normalizedIp)) return false;
+    ip = normalizedIp; // update ip to ipv4 for remaining checks
+
+    // Block 0.0.0.0
+    if (ip === '0.0.0.0') return true;
+
+    const parts = ip.split('.').map(Number);
+    if (parts.length !== 4) return false;
+
+    // 10.0.0.0/8
+    if (parts[0] === 10) return true;
+
+    // 127.0.0.0/8 (Loopback)
+    if (parts[0] === 127) return true;
+
+    // 172.16.0.0/12
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+
+    // 192.168.0.0/16
+    if (parts[0] === 192 && parts[1] === 168) return true;
+
+    // 169.254.0.0/16 (Link-local/AWS Metadata)
+    if (parts[0] === 169 && parts[1] === 254) return true;
+
+    return false;
+}
+
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, addresses, family) => {
+        if (err) {
+            return callback(err);
+        }
+
+        if (Array.isArray(addresses)) {
+             for (const addr of addresses) {
+                  const ip = addr.address || addr;
+                  if (isInternalIp(ip)) {
+                       return callback(new Error(`DNS resolve failed: internal IP detected ${ip}`));
+                  }
+             }
+             callback(null, addresses, family);
+        } else {
+             const ip = addresses.address || addresses;
+             if (isInternalIp(ip)) {
+                 return callback(new Error(`DNS resolve failed: internal IP detected ${ip}`));
+             }
+             callback(null, addresses, family);
+        }
+    });
+}
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlStr) {
+    try {
+        const url = new URL(urlStr);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            return false;
+        }
+
+        let hostname = url.hostname;
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+             hostname = hostname.slice(1, -1);
+        }
+
+        if (net.isIP(hostname)) {
+             if (isInternalIp(hostname)) {
+                  return false;
+             }
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1649,6 +1763,10 @@ function isCoverCached(gameId, originalUrl) {
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝缓存不安全的封面URL: ${originalUrl}`);
+        return null;
+    }
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1672,7 +1790,9 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
-                }
+                },
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent
             });
             
             fs.writeFileSync(localPath, response.data);
@@ -1767,6 +1887,10 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(400).json({ error: '不安全的封面 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1783,7 +1907,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+            },
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent
         });
         
         // 保存到本地
@@ -1798,8 +1924,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 下载失败时直接返回错误，避免重定向带来的安全风险
+        res.status(500).json({ error: '封面下载失败' });
     }
 });
 
