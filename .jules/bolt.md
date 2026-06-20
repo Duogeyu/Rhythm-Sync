@@ -1,3 +1,7 @@
 ## 2023-10-27 - [Optimize Levenshtein Distance Calculation]
 **Learning:** In the Node.js backend, synchronous string matching algorithms like `levenshteinDistance` run single-threaded and block the event loop. The original implementation used a 2D matrix (`const matrix = []`), resulting in $O(N \times M)$ memory allocations and massive Garbage Collection (GC) overhead during bulk matching tasks.
 **Action:** Always optimize dynamic programming matrix calculations in high-frequency Node.js loops by using an $O(N)$ 1D array approach combined with a globally shared `Uint16Array` buffer for standard lengths. Include a dynamic allocation fallback for inputs that exceed the buffer's maximum length.
+
+## 2023-11-09 - [Extract High-Frequency Regexes and Functions to Shared Module]
+**Learning:** Inline function definitions and uncompiled regular expressions within high-frequency API route handlers (especially those dealing with string matching or processing large arrays like `fuzzysort`) cause massive overhead due to repeated memory allocations and continuous Garbage Collection (GC) pauses.
+**Action:** Always hoist invariant regular expressions and utility functions (e.g., `normalizeTitle`, `normalizeArtist`) to the module scope or a shared `utils.js` file. Note: Sharing global regexes (`/g`) is safe when used exclusively with `String.prototype.replace()`, as it does not leak `lastIndex` state across requests.
