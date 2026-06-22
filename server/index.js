@@ -8,6 +8,10 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const http = require('http');
+const https = require('https');
+const net = require('net');
+const dns = require('dns');
 const {
     user_playlist,
     playlist_detail,
@@ -19,6 +23,56 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// SSRF 防护相关
+function isInternalIp(ip) {
+    if (!ip) return false;
+    let normalized = ip;
+    if (normalized.startsWith('::ffff:')) normalized = normalized.substring(7);
+    if (normalized === '0.0.0.0' || normalized === '::') return true;
+    if (normalized.startsWith('127.') || normalized === '::1') return true;
+    if (normalized.startsWith('169.254.')) return true;
+    if (normalized.startsWith('10.')) return true;
+    if (normalized.startsWith('192.168.')) return true;
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(normalized)) return true;
+    if (normalized.toLowerCase().startsWith('fc00:') || normalized.toLowerCase().startsWith('fd00:')) return true;
+    if (normalized.toLowerCase().startsWith('fe80:')) return true;
+    return false;
+}
+
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, address, family);
+        const addrs = Array.isArray(address) ? address : [{address}];
+        const isInternal = addrs.some(a => isInternalIp(a.address || a));
+        if (isInternal) {
+            return callback(new Error('DNS resolution resulted in an internal IP'), null, null);
+        }
+        callback(err, address, family);
+    });
+}
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlStr) {
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+        let hostname = parsed.hostname;
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+            hostname = hostname.substring(1, hostname.length - 1);
+        }
+        if (net.isIP(hostname) && isInternalIp(hostname)) return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1663,12 +1717,20 @@ async function downloadAndCacheCover(gameId, originalUrl) {
         return localPath;
     }
     
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[封面] 拒绝下载不安全的 URL: ${originalUrl}`);
+        return null;
+    }
+
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
+                maxRedirects: 0,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1767,6 +1829,10 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(400).json({ error: '无效或不安全的 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1781,6 +1847,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
+            maxRedirects: 0,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
