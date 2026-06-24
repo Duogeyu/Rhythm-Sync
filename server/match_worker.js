@@ -1,6 +1,6 @@
 const { parentPort, workerData } = require('worker_threads');
 const Fuse = require('fuse.js');
-const { normalizeTitle } = require('./utils');
+const { normalizeTitle, normalizeArtist, artistMatch, lengthSimilarity } = require('./utils');
 
 const { songs, userSongs, gameId, config } = workerData;
 
