@@ -19,6 +19,76 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
+
+function isInternalIp(ip) {
+    if (!ip) return true;
+    let cleanIp = ip.replace(/^\[|\]$/g, '');
+    if (cleanIp.startsWith('::ffff:')) {
+        cleanIp = cleanIp.substring(7);
+    }
+
+    if (cleanIp === '0.0.0.0' || cleanIp.startsWith('127.') || cleanIp === '::1' || cleanIp === '::') return true;
+    if (cleanIp.startsWith('10.')) return true;
+    if (cleanIp.startsWith('192.168.')) return true;
+    if (cleanIp.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) return true;
+    if (cleanIp.startsWith('169.254.')) return true;
+    if (cleanIp.startsWith('fc00:') || cleanIp.startsWith('fd00:')) return true;
+    if (cleanIp.startsWith('fe80:')) return true;
+
+    return false;
+}
+
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+
+        const isInternal = Array.isArray(address)
+            ? address.some(a => isInternalIp(a.address || a))
+            : isInternalIp(address);
+
+        if (isInternal) {
+            return callback(new Error('Access to internal network is not allowed'));
+        }
+
+        callback(null, address, family);
+    });
+}
+
+const safeHttpAgent = new http.Agent({
+    lookup: safeLookup,
+    keepAlive: true
+});
+
+const safeHttpsAgent = new https.Agent({
+    lookup: safeLookup,
+    keepAlive: true
+});
+
+function isSafeUrl(urlString) {
+    if (!urlString) return false;
+    try {
+        const parsed = new URL(urlString);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return false;
+        }
+        if (net.isIP(parsed.hostname) && isInternalIp(parsed.hostname)) {
+            return false;
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1648,7 +1718,7 @@ function isCoverCached(gameId, originalUrl) {
 
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
-    if (!originalUrl || !coversConfig.enabled) return null;
+    if (!originalUrl || !coversConfig.enabled || !isSafeUrl(originalUrl)) return null;
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1669,6 +1739,8 @@ async function downloadAndCacheCover(gameId, originalUrl) {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1766,6 +1838,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(400).json({ error: '无效或不安全的原始 URL' });
+    }
     
     // 按需下载
     try {
@@ -1781,6 +1856,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1798,8 +1875,7 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        return res.status(502).json({ error: '封面下载失败' });
     }
 });
 
