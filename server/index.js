@@ -18,7 +18,60 @@ const {
     cloudsearch
 } = require('NeteaseCloudMusicApi');
 
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    if (!ip) return false;
+    let cleanIp = ip.replace(/^\[|\]$/g, '');
+    if (cleanIp.startsWith('::ffff:')) cleanIp = cleanIp.substring(7);
+    if (cleanIp === '0.0.0.0' || cleanIp === '::' || cleanIp.startsWith('127.') || cleanIp === '::1') return true;
+    if (cleanIp.startsWith('10.') || cleanIp.startsWith('192.168.')) return true;
+    if (cleanIp.startsWith('172.')) {
+        const parts = cleanIp.split('.');
+        const second = parseInt(parts[1], 10);
+        if (second >= 16 && second <= 31) return true;
+    }
+    if (cleanIp.startsWith('169.254.') || cleanIp.toLowerCase().startsWith('fe80:') || cleanIp.toLowerCase().startsWith('fc00:') || cleanIp.toLowerCase().startsWith('fd00:')) return true;
+    return false;
+}
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+        let ips = Array.isArray(address) ? address.map(a => a.address || a) : [address];
+        if (ips.some(isInternalIp)) {
+            return callback(new Error('Access to internal network is not allowed'));
+        }
+        callback(null, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ keepAlive: true, lookup: safeLookup });
+const safeHttpsAgent = new https.Agent({ keepAlive: true, lookup: safeLookup });
+
+function isSafeUrl(urlStr) {
+    if (!urlStr) return false;
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+        let hostname = parsed.hostname;
+        hostname = hostname.replace(/^\[|\]$/g, '');
+        if (require('net').isIP(hostname)) {
+            if (isInternalIp(hostname)) return false;
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1087,6 +1140,8 @@ async function fetchGameSongs(gameId) {
             // 减少超时时间到 10 秒，避免卡住太久
             const response = await axios.get(url, { 
                 timeout: 10000,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
                 // 添加 headers 避免某些服务器拒绝请求
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -1664,11 +1719,17 @@ async function downloadAndCacheCover(gameId, originalUrl) {
     }
     
     // 下载封面
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝下载不安全的封面 URL: ${originalUrl}`);
+        return null;
+    }
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1769,6 +1830,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     
     // 按需下载
     try {
+        if (!isSafeUrl(originalUrl)) {
+            return res.status(400).json({ error: '无效或不安全的原始 URL' });
+        }
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
         
         // 确保目录存在
@@ -1781,6 +1845,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1798,8 +1864,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 移除不安全的重定向以防止 SSRF/Open Redirect
+        res.status(502).json({ error: '封面下载失败' });
     }
 });
 
