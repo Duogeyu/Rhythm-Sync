@@ -5,6 +5,11 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
+const url = require('url');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -19,6 +24,114 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// 判断是否为内网IP，防止SSRF攻击
+function isInternalIp(ipStr) {
+    if (!ipStr) return false;
+    // 处理 IPv6 带有括号的情况，并转为小写
+    let ip = ipStr.toLowerCase().replace(/^\[|\]$/g, '');
+
+    // 移除 IPv4 映射前缀
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.substring(7);
+    }
+
+    // IPv4 内网地址
+    if (net.isIPv4(ip)) {
+        if (ip.startsWith('0.')) return true; // 0.0.0.0/8
+        if (ip.startsWith('127.')) return true; // 127.0.0.0/8
+        if (ip.startsWith('10.')) return true; // 10.0.0.0/8
+        if (ip.startsWith('169.254.')) return true; // 169.254.0.0/16
+        if (ip.startsWith('192.168.')) return true; // 192.168.0.0/16
+        if (ip.startsWith('172.')) { // 172.16.0.0/12
+            const secondOctet = parseInt(ip.split('.')[1], 10);
+            if (secondOctet >= 16 && secondOctet <= 31) return true;
+        }
+        return false;
+    }
+
+    // IPv6 内网地址
+    if (net.isIPv6(ip)) {
+        if (ip === '::' || ip === '::1') return true;
+        if (ip.startsWith('fc00:') || ip.startsWith('fd00:')) return true; // Unique Local Address
+        if (ip.startsWith('fe80:')) return true; // Link Local Address
+        return false;
+    }
+
+    return false;
+}
+
+// 安全的 DNS 查询
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) {
+            return callback(err, address, family);
+        }
+
+        // dns.lookup如果设置了 all: true，address返回的是数组
+        const isInternal = Array.isArray(address)
+            ? address.some(a => isInternalIp(a.address || a))
+            : isInternalIp(address);
+
+        if (isInternal) {
+            return callback(new Error(`SSRF Blocked: DNS resolved to internal IP for ${hostname}`), null, null);
+        }
+
+        callback(null, address, family);
+    });
+}
+
+
+// 安全的 Agent，处理直接IP请求的重定向问题
+class SafeHttpAgent extends http.Agent {
+    createConnection(options, callback) {
+        if (options.host && net.isIP(options.host) && isInternalIp(options.host)) {
+            const err = new Error(`SSRF Blocked: Redirect to internal IP ${options.host}`);
+            if (callback) return callback(err);
+            throw err;
+        }
+        return super.createConnection(options, callback);
+    }
+}
+
+class SafeHttpsAgent extends https.Agent {
+    createConnection(options, callback) {
+        if (options.host && net.isIP(options.host) && isInternalIp(options.host)) {
+            const err = new Error(`SSRF Blocked: Redirect to internal IP ${options.host}`);
+            if (callback) return callback(err);
+            throw err;
+        }
+        return super.createConnection(options, callback);
+    }
+}
+
+const safeHttpAgent = new SafeHttpAgent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new SafeHttpsAgent({ lookup: safeLookup, keepAlive: true });
+
+// 校验URL是否安全
+function isSafeUrl(urlString) {
+    try {
+        const parsedUrl = new url.URL(urlString);
+        // 处理 IPv6 带有括号的情况
+        let hostname = parsedUrl.hostname.toLowerCase();
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+            hostname = hostname.slice(1, -1);
+        }
+
+        // 如果 Hostname 是直接的 IP 地址，检查是否是内网 IP
+        if (net.isIP(hostname) && isInternalIp(hostname)) {
+            return false;
+        }
+        return true;
+    } catch (e) {
+        return false; // 无效 URL 也视为不安全
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1650,6 +1763,11 @@ function isCoverCached(gameId, originalUrl) {
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
     
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] SSRF 拦截: 阻止访问危险封面 URL - ${originalUrl}`);
+        return null;
+    }
+
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
     
@@ -1669,6 +1787,8 @@ async function downloadAndCacheCover(gameId, originalUrl) {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1767,6 +1887,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] SSRF 拦截: 阻止按需下载危险封面 URL - ${originalUrl}`);
+        return res.status(400).json({ error: '无效或不安全的封面 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1781,6 +1906,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
