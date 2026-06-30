@@ -8,6 +8,7 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const { normalizeTitle, normalizeArtist } = require('./utils');
 const {
     user_playlist,
     playlist_detail,
@@ -2485,16 +2486,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         sendEvent('init', { totalUserSongs: userSongs.length, gameStats });
 
         // 2. 准备匹配索引
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
 
         // Levenshtein 编辑距离 (优化版：O(n) 空间，减少 GC)
         const levenshteinDistance = (s1, s2) => {
@@ -2583,16 +2574,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         const BATCH_SIZE = 5;
         let batchResults = [];
 
-        // 辅助函数：计算艺术家相似度
-        const normalizeArtist = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[,，、&＆×x]/g, '') // 去除分隔符
-                .replace(/feat\.?/gi, '')
-                .replace(/cv[.:]?/gi, '')
-                .replace(/[(（][^)）]*[)）]/g, ''); // 去除括号内容
-        };
 
         const artistMatch = (userArtist, gameArtist) => {
             const ua = normalizeArtist(userArtist);
@@ -3636,16 +3617,6 @@ app.get('/api/check', async (req, res) => {
             return res.status(400).json({ success: false, error: '缺少歌曲标题 (title 参数)' });
         }
         
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
         
         const normalizedTitle = normalizeTitle(title);
         const normalizedArtist = artist ? normalizeTitle(artist) : null;
@@ -4027,16 +3998,6 @@ app.post('/api/bot/query', async (req, res) => {
         const results = {};
         
         // 准备匹配函数
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
         
         // 并行获取所有游戏数据并匹配
         await Promise.all(gameIds.map(async (gameId) => {
