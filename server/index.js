@@ -9,6 +9,11 @@ const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
 const {
+    normalizeTitle,
+    normalizeArtist,
+    levenshteinDistance
+} = require('./utils');
+const {
     user_playlist,
     playlist_detail,
     playlist_track_all,
@@ -2395,9 +2400,6 @@ app.get('/api/arcade-song/:gameId/:songId/audio', async (req, res) => {
 // 内存存储匹配任务
 const activeJobs = new Map();
 
-// Levenshtein 距离优化，共享缓冲区避免重复分配
-const LEVENSHTEIN_BUFFER_SIZE = 1024;
-const sharedLevenshteinBuffer = new Uint16Array(LEVENSHTEIN_BUFFER_SIZE);
 
 // 启动匹配任务
 app.post('/api/match/start', (req, res) => {
@@ -2483,81 +2485,7 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
             };
         });
         sendEvent('init', { totalUserSongs: userSongs.length, gameStats });
-
         // 2. 准备匹配索引
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
-
-        // Levenshtein 编辑距离 (优化版：O(n) 空间，减少 GC)
-        const levenshteinDistance = (s1, s2) => {
-            const len1 = s1.length;
-            const len2 = s2.length;
-            if (len1 === 0) return len2;
-            if (len2 === 0) return len1;
-            
-            // 如果字符串过长，回退到动态分配数组，避免越界
-            if (len1 >= LEVENSHTEIN_BUFFER_SIZE) {
-                const row = new Uint16Array(len1 + 1);
-                for (let j = 0; j <= len1; j++) {
-                    row[j] = j;
-                }
-                for (let i = 1; i <= len2; i++) {
-                    let prev = i;
-                    let prevDiagonal = i - 1;
-                    const c2 = s2.charCodeAt(i - 1);
-                    for (let j = 1; j <= len1; j++) {
-                        let current;
-                        if (c2 === s1.charCodeAt(j - 1)) {
-                            current = prevDiagonal;
-                        } else {
-                            current = Math.min(
-                                prevDiagonal, // 替换
-                                prev,         // 插入
-                                row[j]        // 删除
-                            ) + 1;
-                        }
-                        prevDiagonal = row[j];
-                        row[j] = current;
-                        prev = current;
-                    }
-                }
-                return row[len1];
-            }
-            
-            // 使用共享 buffer 以减少 GC 压力
-            for (let j = 0; j <= len1; j++) {
-                sharedLevenshteinBuffer[j] = j;
-            }
-            for (let i = 1; i <= len2; i++) {
-                let prev = i;
-                let prevDiagonal = i - 1;
-                const c2 = s2.charCodeAt(i - 1);
-                for (let j = 1; j <= len1; j++) {
-                    let current;
-                    if (c2 === s1.charCodeAt(j - 1)) {
-                        current = prevDiagonal;
-                    } else {
-                        current = Math.min(
-                            prevDiagonal,
-                            prev,
-                            sharedLevenshteinBuffer[j]
-                        ) + 1;
-                    }
-                    prevDiagonal = sharedLevenshteinBuffer[j];
-                    sharedLevenshteinBuffer[j] = current;
-                    prev = current;
-                }
-            }
-            return sharedLevenshteinBuffer[len1];
-        };
 
         const matchers = gameDataResults.map(({ gameId, songs, error }) => {
             if (error) return null;
@@ -2582,17 +2510,6 @@ app.get('/api/match/stream/:sessionId', async (req, res) => {
         // 批量处理，避免每首发送一次导致通信开销太大，每 5 首发一次
         const BATCH_SIZE = 5;
         let batchResults = [];
-
-        // 辅助函数：计算艺术家相似度
-        const normalizeArtist = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[,，、&＆×x]/g, '') // 去除分隔符
-                .replace(/feat\.?/gi, '')
-                .replace(/cv[.:]?/gi, '')
-                .replace(/[(（][^)）]*[)）]/g, ''); // 去除括号内容
-        };
 
         const artistMatch = (userArtist, gameArtist) => {
             const ua = normalizeArtist(userArtist);
@@ -2852,18 +2769,6 @@ app.post('/api/match-all', async (req, res) => {
         });
 
         const gameDataResults = await Promise.all(gameDataPromises);
-
-        // 辅助函数：标准化标题用于精确匹配
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '') // 去除空格
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
 
         // 对每个游戏进行匹配（并行处理）
         const matchPromises = gameDataResults.map(async ({ gameId, songs, error }) => {
@@ -3635,18 +3540,6 @@ app.get('/api/check', async (req, res) => {
         if (!title || title.trim().length < 1) {
             return res.status(400).json({ success: false, error: '缺少歌曲标题 (title 参数)' });
         }
-        
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
-        
         const normalizedTitle = normalizeTitle(title);
         const normalizedArtist = artist ? normalizeTitle(artist) : null;
         
@@ -4027,17 +3920,6 @@ app.post('/api/bot/query', async (req, res) => {
         const results = {};
         
         // 准备匹配函数
-        const normalizeTitle = (str) => {
-            if (!str) return '';
-            return str.toLowerCase()
-                .replace(/\s+/g, '')
-                .replace(/[！!]/g, '!')
-                .replace(/[？?]/g, '?')
-                .replace(/[（(]/g, '(')
-                .replace(/[）)]/g, ')')
-                .replace(/[－-]/g, '-');
-        };
-        
         // 并行获取所有游戏数据并匹配
         await Promise.all(gameIds.map(async (gameId) => {
             try {
