@@ -19,6 +19,72 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const net = require('net');
+const { URL } = require('url');
+
+// 内部 IP 检查，防止 SSRF
+function isInternalIp(ip) {
+    if (!ip) return false;
+    let cleanIp = ip.replace(/^\[(.*)\]$/, '$1');
+    if (cleanIp.startsWith('::ffff:')) {
+        cleanIp = cleanIp.substring(7);
+    }
+    if (!net.isIP(cleanIp)) return false;
+    if (cleanIp === '127.0.0.1' || cleanIp === '::1' || cleanIp.startsWith('127.')) return true;
+    if (cleanIp === '0.0.0.0' || cleanIp === '::' || cleanIp.startsWith('0.')) return true;
+    if (cleanIp.startsWith('10.')) return true;
+    if (cleanIp.startsWith('192.168.')) return true;
+    if (cleanIp.startsWith('172.')) {
+        const secondOctet = parseInt(cleanIp.split('.')[1], 10);
+        if (secondOctet >= 16 && secondOctet <= 31) return true;
+    }
+    if (cleanIp.startsWith('169.254.')) return true;
+    if (cleanIp.toLowerCase().startsWith('fe80:')) return true;
+    if (cleanIp.toLowerCase().startsWith('fc00:') || cleanIp.toLowerCase().startsWith('fd00:')) return true;
+    return false;
+}
+
+// 自定义 dns.lookup 拦截 DNS rebinding 和内部 IP
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, address, family);
+        const isInternal = Array.isArray(address)
+            ? address.some(a => isInternalIp(a.address || a))
+            : isInternalIp(address);
+        if (isInternal) {
+            return callback(new Error(`DNS resolution to internal IP blocked: ${hostname}`), null, null);
+        }
+        callback(null, address, family);
+    });
+}
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+function isSafeUrl(urlString) {
+    if (!urlString) return false;
+    try {
+        const parsed = new URL(urlString);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+        if (net.isIP(parsed.hostname) && isInternalIp(parsed.hostname)) {
+            return false;
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1648,7 +1714,7 @@ function isCoverCached(gameId, originalUrl) {
 
 // 下载并缓存封面
 async function downloadAndCacheCover(gameId, originalUrl) {
-    if (!originalUrl || !coversConfig.enabled) return null;
+    if (!originalUrl || !coversConfig.enabled || !isSafeUrl(originalUrl)) return null;
     
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
@@ -1672,6 +1738,13 @@ async function downloadAndCacheCover(gameId, originalUrl) {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
+                },
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
+                beforeRedirect: (options) => {
+                    if (!isSafeUrl(options.href)) {
+                        throw new Error('Redirect to unsafe URL blocked');
+                    }
                 }
             });
             
@@ -1766,6 +1839,9 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
     if (!originalUrl) {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
+    if (!isSafeUrl(originalUrl)) {
+        return res.status(400).json({ error: '非法或不允许的 URL 请求' });
+    }
     
     // 按需下载
     try {
@@ -1783,6 +1859,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
             timeout: coversConfig.timeout,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
+            beforeRedirect: (options) => {
+                if (!isSafeUrl(options.href)) {
+                    throw new Error('Redirect to unsafe URL blocked');
+                }
             }
         });
         
@@ -1798,8 +1881,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 下载失败时返回 502 Bad Gateway，避免利用 302 重定向进行 SSRF/Open Redirect 绕过
+        res.status(502).json({ error: '封面下载失败' });
     }
 });
 
