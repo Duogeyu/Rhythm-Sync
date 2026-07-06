@@ -1,4 +1,4 @@
-## 2026-04-20 - Global Path Traversal Protection
-**Vulnerability:** Multiple API endpoints (`/api/covers/:gameId/:fileName`, `/api/bot/result/:id`, `/api/random/image/:id`, etc.) use user input directly in `path.join` without path traversal validation.
-**Learning:** `req.params` parameters must be validated to prevent directory traversal (`..`, `/`, `\`) before being used in file system operations.
-**Prevention:** Implement a global `isSafeFilename` middleware using `app.param()` to automatically reject any unsafe paths across all endpoints.
+## 2026-07-06 - SSRF and DNS Rebinding Mitigation
+**Vulnerability:** Proxy endpoints relying on `axios` (e.g., `/api/covers/:gameId/:fileName`) fetched user-provided URLs (`req.query.url`) without restricting internal network access or redirecting securely. This opened the application up to Server-Side Request Forgery (SSRF) and Open Redirect attacks.
+**Learning:** Due to Node.js's asynchronous DNS resolution, traditional string-based URL validation is vulnerable to DNS Rebinding (Time-Of-Check to Time-Of-Use). To properly secure outbound requests against SSRF in Node.js, you must implement a custom `dns.lookup` function injected into a custom `http.Agent`/`https.Agent`.
+**Prevention:** Always use global, customized `http.Agent`/`https.Agent` configurations with DNS resolution interception (`lookup: safeLookup`) when fetching user-controlled URLs to definitively block internal IP address resolution at the socket level. Furthermore, intercept `axios` redirects (`beforeRedirect`) to validate redirect targets.
