@@ -5,6 +5,10 @@ const fuzzysort = require('fuzzysort');
 const Fuse = require('fuse.js');
 const fs = require('fs');
 const path = require('path');
+const net = require('net');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
@@ -19,6 +23,44 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+function isInternalIp(ip) {
+    if (!ip) return true;
+    let cleanIp = String(ip).replace(/^\[|\]$/g, '');
+    if (cleanIp.startsWith('::ffff:')) cleanIp = cleanIp.substring(7);
+    if (net.isIPv4(cleanIp)) {
+        return cleanIp.startsWith('127.') || cleanIp.startsWith('0.') || cleanIp.startsWith('10.') ||
+               cleanIp.startsWith('169.254.') || cleanIp.startsWith('192.168.') ||
+               /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(cleanIp);
+    }
+    if (net.isIPv6(cleanIp)) {
+        return cleanIp === '::' || cleanIp === '::1' || cleanIp.toLowerCase().startsWith('fe80:') ||
+               cleanIp.toLowerCase().startsWith('fc00:') || cleanIp.toLowerCase().startsWith('fd00:');
+    }
+    return false;
+}
+
+function isSafeUrl(urlStr) {
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+        let hostname = parsed.hostname.replace(/^\[|\]$/g, '');
+        return net.isIP(hostname) ? !isInternalIp(hostname) : true;
+    } catch { return false; }
+}
+
+const safeLookup = (hostname, options, callback) => {
+    if (typeof options === 'function') { callback = options; options = undefined; }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err);
+        const addresses = Array.isArray(address) ? address : [{ address }];
+        if (addresses.some(a => isInternalIp(a.address || a))) return callback(new Error('DNS resolution to internal IP blocked'));
+        callback(null, address, family);
+    });
+};
+
+const safeHttpAgent = new http.Agent({ keepAlive: true, lookup: safeLookup });
+const safeHttpsAgent = new https.Agent({ keepAlive: true, lookup: safeLookup });
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1663,12 +1705,23 @@ async function downloadAndCacheCover(gameId, originalUrl) {
         return localPath;
     }
     
+    // 检查原始URL安全性防止SSRF
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[封面安全] 拦截到不安全的URL下载请求 (${gameId}): ${originalUrl}`);
+        return null;
+    }
+
     // 下载封面
     for (let i = 0; i < coversConfig.retryCount; i++) {
         try {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
+                beforeRedirect: (options) => {
+                    if (!isSafeUrl(options.href)) throw new Error('Blocked SSRF redirect');
+                },
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1767,6 +1820,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[封面安全] 拦截到不安全的URL请求 ${gameId}: ${fileName} -> ${originalUrl}`);
+        return res.status(403).json({ error: '不允许访问该 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1781,6 +1839,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
+            beforeRedirect: (options) => {
+                if (!isSafeUrl(options.href)) throw new Error('Blocked SSRF redirect');
+            },
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -1798,8 +1861,8 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         res.send(response.data);
     } catch (error) {
         console.error(`[封面] 下载失败 ${gameId}: ${fileName} - ${error.message}`);
-        // 下载失败时重定向到原始 URL
-        res.redirect(originalUrl);
+        // 返回错误而不重定向，防止 Open Redirect / SSRF
+        res.status(502).json({ error: '封面下载失败' });
     }
 });
 
