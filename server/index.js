@@ -8,6 +8,10 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
+const http = require('http');
+const https = require('https');
+const net = require('net');
+const dns = require('dns');
 const {
     user_playlist,
     playlist_detail,
@@ -19,6 +23,65 @@ const {
 } = require('NeteaseCloudMusicApi');
 
 // ============== 安全过滤函数 ==============
+// SSRF 保护：检测内网 IP
+function isInternalIp(ip) {
+    if (!ip) return false;
+    const cleanIp = ip.replace(/^::ffff:/i, '');
+    if (net.isIPv4(cleanIp)) {
+        return (
+            cleanIp.startsWith('127.') ||
+            cleanIp.startsWith('10.') ||
+            cleanIp.startsWith('192.168.') ||
+            cleanIp.startsWith('169.254.') ||
+            cleanIp.startsWith('0.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(cleanIp)
+        );
+    }
+    if (net.isIPv6(cleanIp)) {
+        const lowerIp = cleanIp.toLowerCase();
+        return (
+            lowerIp === '::1' || lowerIp === '::' ||
+            lowerIp.startsWith('fc') || lowerIp.startsWith('fd') ||
+            lowerIp.startsWith('fe8') || lowerIp.startsWith('fe9') ||
+            lowerIp.startsWith('fea') || lowerIp.startsWith('feb')
+        );
+    }
+    return false;
+}
+
+// SSRF 保护：拦截 DNS 解析中的内网 IP
+function safeLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    dns.lookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, address, family);
+        const resolvedAddresses = Array.isArray(address) ? address : [{ address }];
+        for (const addr of resolvedAddresses) {
+            if (isInternalIp(addr.address || addr)) {
+                return callback(new Error(`DNS 解析到内网 IP，被拦截: ${hostname}`), null, null);
+            }
+        }
+        callback(null, address, family);
+    });
+}
+
+const safeHttpAgent = new http.Agent({ lookup: safeLookup, keepAlive: true });
+const safeHttpsAgent = new https.Agent({ lookup: safeLookup, keepAlive: true });
+
+// SSRF 保护：验证 URL
+function isSafeUrl(urlStr) {
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+        if (net.isIP(parsed.hostname) && isInternalIp(parsed.hostname)) return false;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sanitizeInput(input) {
     if (typeof input !== 'string') return '';
     
@@ -1650,6 +1713,11 @@ function isCoverCached(gameId, originalUrl) {
 async function downloadAndCacheCover(gameId, originalUrl) {
     if (!originalUrl || !coversConfig.enabled) return null;
     
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 拒绝下载不安全的封面URL: ${originalUrl}`);
+        return null;
+    }
+
     const localPath = getCoverLocalPath(gameId, originalUrl);
     const gameDir = path.dirname(localPath);
     
@@ -1669,6 +1737,13 @@ async function downloadAndCacheCover(gameId, originalUrl) {
             const response = await axios.get(originalUrl, {
                 responseType: 'arraybuffer',
                 timeout: coversConfig.timeout,
+                httpAgent: safeHttpAgent,
+                httpsAgent: safeHttpsAgent,
+                beforeRedirect: (options, responseDetails) => {
+                    if (!isSafeUrl(options.href)) {
+                        throw new Error(`不安全的重定向目标: ${options.href}`);
+                    }
+                },
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': originalUrl
@@ -1767,6 +1842,11 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         return res.status(404).json({ error: '封面未找到，且未提供原始 URL' });
     }
     
+    if (!isSafeUrl(originalUrl)) {
+        console.warn(`[安全] 代理拒绝访问不安全的封面URL: ${originalUrl}`);
+        return res.status(403).json({ error: '拒绝访问不安全的 URL' });
+    }
+
     // 按需下载
     try {
         console.log(`[封面] 按需下载 ${gameId}: ${fileName}`);
@@ -1781,6 +1861,13 @@ app.get('/api/covers/:gameId/:fileName', async (req, res) => {
         const response = await axios.get(originalUrl, {
             responseType: 'arraybuffer',
             timeout: coversConfig.timeout,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
+            beforeRedirect: (options, responseDetails) => {
+                if (!isSafeUrl(options.href)) {
+                    throw new Error(`不安全的重定向目标: ${options.href}`);
+                }
+            },
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
